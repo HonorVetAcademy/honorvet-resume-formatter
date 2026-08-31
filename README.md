@@ -1,15 +1,21 @@
 # HonorVet Resume Formatter
 
-Upload any raw resume and get back a resume reformatted into HonorVet standard formatting — with facility type, trauma level, bed size, and EMR/charting system automatically researched for each employer.
+A local tool with two formatting modes:
+
+- **HonorVet Standard** — reformats a raw resume into HonorVet's standard layout, with facility type, trauma level, bed size, and EMR/charting system automatically researched for each employer.
+- **RightSourcing** — formats a resume for RightSourcing/Magnit client submission (intro table, Skills section, Position Type/Agency Name placeholders) and runs it against RightSourcing's pre-submission checklist before you download it, flagging missing fields, expired licenses, future/typo'd dates, and unexplained employment gaps.
+
+This app runs locally only (not publicly hosted) — your Anthropic API key stays in a local `.env` file and is never exposed.
 
 ## How it works
 
-1. Upload a resume (PDF, DOCX, or TXT)
-2. Claude parses it into structured fields, preserving the candidate's original wording
-3. For each employer, Claude researches the facility on the web (type of facility, trauma level, bed size, EMR system) — returning `null` rather than guessing when it can't verify a fact, with a confidence rating and source links
-4. A `.docx` is generated in HonorVet standard formatting: centered header, Professional Summary, Education, Licensure & Certifications, then Professional Experience with each job listing Type of Facility / Trauma Level / Bed Size / Patient Ratio / Charting System followed by duty bullets
+1. Upload a resume (PDF, DOCX, or TXT) on either tab
+2. Claude parses it into structured fields, preserving your original wording
+3. For each employer, Claude researches the facility on the web (type of facility, trauma level, bed size/EMR) — returning `null` rather than guessing when it can't verify a fact, with a confidence rating and source links so you can spot-check before sending
+4. **RightSourcing tab only:** the parsed resume is run against the client's submission checklist (name format, contact info present, required fields per job, dates in the past, license not expired, employment gaps explained, etc.) and results are shown before download
+5. A `.docx` is generated in the appropriate format and downloads
 
-Facility research is surfaced in the UI with confidence + sources before download, since AI-researched facts about bed counts/EMR vendors can be wrong or stale — always spot-check before sending to a client.
+Facility research confidence + sources are always shown in the UI — AI-researched facts about bed counts/EMR vendors can be wrong or stale, so always spot-check before sending to a client.
 
 ## Stack
 
@@ -57,12 +63,25 @@ Open: http://localhost:3000
 ```
 honorvet-resume-formatter/
 ├── backend/
-│   ├── main.py                        # FastAPI app + /api/format, /api/download endpoints
+│   ├── main.py                            # FastAPI app: /api/format, /api/rightsourcing/format, /api/download
 │   └── services/
-│       ├── resume_parser.py           # PDF/DOCX/TXT text extraction
-│       ├── resume_formatter_service.py  # Claude resume parsing + facility web research
-│       └── resume_docx_generator.py   # Renders the structured resume into HonorVet-formatted .docx
+│       ├── resume_parser.py               # PDF/DOCX/TXT text extraction
+│       ├── resume_formatter_service.py    # HonorVet Standard: resume parsing + facility web research
+│       ├── resume_docx_generator.py       # Renders HonorVet Standard .docx (also provides shared docx helpers)
+│       ├── rightsourcing_service.py       # RightSourcing: resume parsing + submission checklist
+│       └── rightsourcing_docx_generator.py # Renders RightSourcing submission .docx
 └── frontend/
-    ├── app/page.tsx                   # Upload UI, progress states, facility research preview
-    └── lib/api.ts                     # Typed API client
+    ├── app/page.tsx                       # Tab shell (HonorVet Standard / RightSourcing)
+    ├── components/
+    │   ├── HonorVetTab.tsx                # HonorVet Standard upload UI + facility research preview
+    │   └── RightSourcingTab.tsx           # RightSourcing upload UI + checklist + facility research preview
+    └── lib/api.ts                         # Typed API client
 ```
+
+## Notes on the RightSourcing checklist
+
+The checklist covers everything derivable from the resume itself: name format, contact info, per-job required fields (facility, dates, title, EMR, Trauma Level, Facility Type), dates that appear to be in the future (likely typos), expired licenses, and unexplained employment gaps — plus a few softer checks (summary quality, consistency of hospital settings, whether gaps are explained in the resume text) reviewed by Claude.
+
+**Position Type** and **Agency Name** aren't present in a candidate's own resume — the generated document leaves placeholders for the recruiter to fill in per submission.
+
+Checklist items that need separate documents — available interview times, shift preference, or matching dates against a reference-check sheet — aren't covered by this tool and should still be checked manually.

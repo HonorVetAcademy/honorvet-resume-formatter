@@ -84,29 +84,43 @@ Rules:
 - If multiple facilities share this name, use the one matching the given location.
 Return only valid JSON, no commentary."""
 
-    try:
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=1500,
-            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 4}],
-            messages=[{"role": "user", "content": prompt}]
-        )
-        text = _extract_text_blocks(response.content)
-        result = _parse_json_response(text)
-    except Exception as e:
-        import logging, traceback
-        logging.error(f"research_facility failed for {facility_name}: {e}\n{traceback.format_exc()}")
-        result = {
-            "type_of_facility": None,
-            "trauma_level": None,
-            "bed_size": None,
-            "emr_system": None,
-            "confidence": "low",
-            "sources": [],
-            "error": str(e),
-        }
-    result["facility_name"] = facility_name
-    return result
+    import logging
+
+    last_error = None
+    for attempt in range(2):
+        try:
+            response = client.messages.create(
+                model=MODEL,
+                max_tokens=3000,
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 4}],
+                messages=[{"role": "user", "content": prompt}]
+            )
+            text = _extract_text_blocks(response.content)
+            result = _parse_json_response(text)
+            result["facility_name"] = facility_name
+            return result
+        except Exception as e:
+            last_error = e
+            block_types = None
+            try:
+                block_types = [b.type for b in response.content]
+            except Exception:
+                pass
+            logging.error(
+                f"research_facility attempt {attempt + 1} failed for {facility_name}: {e} "
+                f"(response blocks: {block_types})"
+            )
+
+    return {
+        "facility_name": facility_name,
+        "type_of_facility": None,
+        "trauma_level": None,
+        "bed_size": None,
+        "emr_system": None,
+        "confidence": "low",
+        "sources": [],
+        "error": str(last_error),
+    }
 
 
 def research_all_facilities(experience: list) -> dict:

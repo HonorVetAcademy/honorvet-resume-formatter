@@ -32,6 +32,8 @@ export default function HonorVetTab() {
       'application/pdf': [],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': [],
       'text/plain': [],
+      'image/jpeg': [],
+      'image/png': [],
     },
     maxFiles: 1,
   })
@@ -75,7 +77,7 @@ export default function HonorVetTab() {
             {file ? (
               <p className="text-sm text-gray-700 font-medium">{file.name}</p>
             ) : (
-              <p className="text-sm text-gray-500">Drag & drop a resume (PDF, DOCX, TXT), or click to browse</p>
+              <p className="text-sm text-gray-500">Drag & drop a resume (PDF, DOCX, TXT, JPEG, PNG), or click to browse</p>
             )}
           </div>
 

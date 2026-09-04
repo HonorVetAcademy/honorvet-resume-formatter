@@ -14,7 +14,9 @@ def extract_structured_resume_rightsourcing(resume_text: str) -> dict:
     """Parse raw resume text into the HonorVet standard submission structure."""
     prompt = f"""You are formatting a resume for submission to a healthcare staffing client. Parse the resume below into structured JSON.
 
-Preserve the candidate's own wording for the summary and duty bullets — clean up only grammar/spacing, do not invent or embellish content. Do not fabricate any facts not present in the source resume.
+Preserve the candidate's own wording and facts — do not invent or embellish content, and do not fabricate any facts not present in the source resume. But DO reformat for readability:
+- If the source resume lists duties as a dense run of short comma/semicolon-separated fragments (e.g., "Sedation, Titrated drips, Ventilated patients, Belmont, RSI"), do not copy each fragment as its own one- or two-word bullet. Instead, group related fragments into a smaller number of complete, well-formed bullets (e.g., "Managed sedation, titrated drips, and ventilated patients" / "Performed RSI and utilized the Belmont rapid infuser"). Aim for roughly 4-8 substantive bullets per job, each a full phrase or sentence, not a single word or acronym standing alone.
+- The "skills" list (separate from duties) is still fine as a flat list of short skill terms — this consolidation guidance is specifically about the per-job "duties" bullets, which should read like a professionally formatted resume, not a raw keyword dump.
 
 RESUME TEXT:
 {resume_text}

@@ -79,23 +79,27 @@ Return a JSON object with exactly these fields:
 }}
 
 Rules:
+- Do 1-2 searches at most, then answer with what you found. Do not keep searching to verify every field — a couple of searches is enough.
 - Prefer null over a guess. Do not fabricate data.
 - Only report facts you can attribute to a source found via search.
 - If multiple facilities share this name, use the one matching the given location.
+- You must always end by returning the JSON object, even if most fields are null.
 Return only valid JSON, no commentary."""
 
     import logging
 
     last_error = None
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             response = client.messages.create(
                 model=MODEL,
-                max_tokens=3000,
-                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 4}],
+                max_tokens=4096,
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 2}],
                 messages=[{"role": "user", "content": prompt}]
             )
             text = _extract_text_blocks(response.content)
+            if not text.strip():
+                raise ValueError(f"empty text in response (stop_reason={response.stop_reason})")
             result = _parse_json_response(text)
             result["facility_name"] = facility_name
             return result

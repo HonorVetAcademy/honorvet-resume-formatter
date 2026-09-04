@@ -3,9 +3,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 export interface RightSourcingExperience {
   facility_name: string; city: string; state: string;
   start_date: string; end_date: string; job_title: string;
-  emr_mentioned?: string; duties: string[];
-  facility_type?: string | null; trauma_level?: string | null; emr_system?: string | null;
-  emr_matches_resume?: boolean; position_type?: string; agency_name?: string;
+  patient_ratio?: string; emr_mentioned?: string; duties: string[];
+  facility_type?: string | null; trauma_level?: string | null;
+  bed_size?: string | number | null; emr_system?: string | null;
+  emr_matches_resume?: boolean;
   research_confidence?: 'high' | 'medium' | 'low'; research_sources?: string[];
 }
 

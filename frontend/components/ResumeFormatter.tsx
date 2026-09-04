@@ -199,12 +199,12 @@ export default function ResumeFormatter() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
                     <div><span className="text-gray-400">Facility Type: </span>{job.facility_type || <span className="text-gray-400 italic">unknown</span>}</div>
                     <div><span className="text-gray-400">Trauma: </span>{job.trauma_level || <span className="text-gray-400 italic">unknown</span>}</div>
+                    <div><span className="text-gray-400">Bed Size: </span>{job.bed_size ?? <span className="text-gray-400 italic">unknown</span>}</div>
                     <div><span className="text-gray-400">EMR: </span>{job.emr_system || <span className="text-gray-400 italic">unknown</span>}
                       {job.emr_mentioned && !job.emr_matches_resume && (
                         <span className="text-yellow-700"> (resume says "{job.emr_mentioned}")</span>
                       )}
                     </div>
-                    <div><span className="text-gray-400">Position Type / Agency: </span><span className="text-gray-400 italic">recruiter to fill in</span></div>
                   </div>
                   {job.research_sources && job.research_sources.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-2">

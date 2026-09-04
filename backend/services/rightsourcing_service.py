@@ -58,6 +58,7 @@ Return a JSON object with this exact schema:
       "start_date": "<start date, e.g. 'Jan 2025'>",
       "end_date": "<end date or 'Present'>",
       "job_title": "<job title>",
+      "patient_ratio": "<patient ratio ONLY if explicitly stated in the resume, else empty string>",
       "emr_mentioned": "<EMR/charting system explicitly mentioned for this job in the resume, else empty string>",
       "duties": ["<duty bullet 1>", "<duty bullet 2>", ...]
     }}
@@ -84,10 +85,9 @@ def build_formatted_resume_rightsourcing(structured: dict, facility_research: di
             **entry,
             "facility_type": research.get("type_of_facility"),
             "trauma_level": research.get("trauma_level"),
+            "bed_size": research.get("bed_size"),
             "emr_system": emr,
             "emr_matches_resume": bool(entry.get("emr_mentioned")) and entry.get("emr_mentioned") == research.get("emr_system"),
-            "position_type": "",
-            "agency_name": "",
             "research_confidence": research.get("confidence", "low"),
             "research_sources": research.get("sources", []),
         })
@@ -179,13 +179,6 @@ def _deterministic_checks(resume: dict) -> list:
                     "status": "fail",
                     "detail": f"{dl.capitalize()} '{job.get('start_date') if dl == 'start date' else job.get('end_date')}' appears to be in the future — check for a typo",
                 })
-
-    checks.append({
-        "id": "position_type_agency",
-        "label": "Position Type / Agency Name",
-        "status": "info",
-        "detail": "Not present in a candidate's own resume — recruiter fills these in per submission",
-    })
 
     # Gap detection (chronological, most-recent-first list)
     parsed_jobs = []

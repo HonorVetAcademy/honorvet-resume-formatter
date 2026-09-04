@@ -10,8 +10,8 @@ from services.resume_docx_generator import _section_header, _bullet, _plain_line
 
 
 def generate_rightsourcing_docx(resume: dict, output_dir: str) -> str:
-    """Render a structured resume into the HonorVet standard submission format:
-    intro table, summary, skills, education, licenses & certs, professional experience."""
+    """Render a structured resume into the HonorVet standard format:
+    header, summary, skills, education, licenses & certs, professional experience."""
     os.makedirs(output_dir, exist_ok=True)
     doc = Document()
 
@@ -35,26 +35,14 @@ def generate_rightsourcing_docx(resume: dict, output_dir: str) -> str:
     run.bold = True
     run.font.size = Pt(15)
 
-    # Introduction table
-    _section_header(doc, "Introduction:")
-    intro_rows = [
-        ("Phone", resume.get("phone", "")),
-        ("Email", resume.get("email", "")),
-        ("Permanent Address", resume.get("permanent_address", "") or "— fill in —"),
-        ("Available to Start Date", "— fill in (mm/dd/yyyy) —"),
-        ("Weekends/Holiday Availability", "— fill in (y/n) —"),
-    ]
-    table = doc.add_table(rows=len(intro_rows), cols=2)
-    table.style = "Table Grid"
-    for i, (label, value) in enumerate(intro_rows):
-        cell_label = table.rows[i].cells[0]
-        cell_label.text = label
-        cell_label.paragraphs[0].runs[0].bold = True
-        cell_label.paragraphs[0].runs[0].font.size = Pt(10)
-        cell_value = table.rows[i].cells[1]
-        cell_value.text = str(value)
-        cell_value.paragraphs[0].runs[0].font.size = Pt(10)
-    doc.add_paragraph()
+    for bit in [resume.get("permanent_address"), resume.get("phone"), resume.get("email")]:
+        if not bit:
+            continue
+        cp = doc.add_paragraph()
+        cp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        cp.paragraph_format.space_after = Pt(0)
+        r = cp.add_run(bit)
+        r.font.size = Pt(10.5)
 
     # Professional Summary
     if resume.get("professional_summary"):
@@ -134,11 +122,11 @@ def generate_rightsourcing_docx(resume: dict, output_dir: str) -> str:
                 tr.bold = True
                 tr.font.size = Pt(10.5)
 
-            _plain_line(doc, "EMR", job.get("emr_system"))
-            _plain_line(doc, "Position Type", job.get("position_type") or "— fill in —")
-            _plain_line(doc, "Agency Name", job.get("agency_name") or "— fill in —")
-            _plain_line(doc, "Trauma Level", job.get("trauma_level"))
             _plain_line(doc, "Facility Type", job.get("facility_type"))
+            _plain_line(doc, "Trauma Level", job.get("trauma_level"))
+            _plain_line(doc, "Patient Ratio", job.get("patient_ratio"))
+            _plain_line(doc, "Bed Size", job.get("bed_size"))
+            _plain_line(doc, "EMR", job.get("emr_system"))
 
             for duty in job.get("duties", []):
                 _bullet(doc, duty, indent=True)

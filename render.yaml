@@ -10,6 +10,6 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: FRONTEND_URL
-        value: https://honorvetacademy.github.io/honorvet-resume-formatter
+        value: https://honorvetacademy.github.io
       - key: UPLOAD_DIR
         value: ./uploads

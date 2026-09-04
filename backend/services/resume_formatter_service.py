@@ -1,7 +1,6 @@
 import anthropic
 import json
 import os
-from concurrent.futures import ThreadPoolExecutor
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 MODEL = "claude-sonnet-4-6"
@@ -128,7 +127,13 @@ Return only valid JSON, no commentary."""
 
 
 def research_all_facilities(experience: list) -> dict:
-    """Research every unique facility in the experience list concurrently. Returns facility_name -> research dict."""
+    """Research every unique facility in the experience list, one at a time.
+
+    Researching facilities concurrently was unreliable on constrained hosting (Render's
+    free tier) — the web_search-enabled call would silently return empty/failed results
+    for some facilities under concurrent load, even though each one works fine alone.
+    Sequential is slower but consistently reliable, which matters more for this tool.
+    """
     seen = {}
     for entry in experience:
         key = entry.get("facility_name", "").strip()
@@ -136,24 +141,15 @@ def research_all_facilities(experience: list) -> dict:
             seen[key] = (entry.get("city", ""), entry.get("state", ""))
 
     results = {}
-    if not seen:
-        return results
-
-    with ThreadPoolExecutor(max_workers=min(4, len(seen))) as pool:
-        futures = {
-            pool.submit(research_facility, name, loc[0], loc[1]): name
-            for name, loc in seen.items()
-        }
-        for future in futures:
-            name = futures[future]
-            try:
-                results[name] = future.result()
-            except Exception as e:
-                results[name] = {
-                    "facility_name": name, "type_of_facility": None, "trauma_level": None,
-                    "bed_size": None, "emr_system": None, "confidence": "low",
-                    "sources": [], "error": str(e),
-                }
+    for name, (city, state) in seen.items():
+        try:
+            results[name] = research_facility(name, city, state)
+        except Exception as e:
+            results[name] = {
+                "facility_name": name, "type_of_facility": None, "trauma_level": None,
+                "bed_size": None, "emr_system": None, "confidence": "low",
+                "sources": [], "error": str(e),
+            }
     return results
 
 

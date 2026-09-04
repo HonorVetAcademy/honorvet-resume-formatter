@@ -13,3 +13,5 @@ services:
         value: https://honorvetacademy.github.io
       - key: UPLOAD_DIR
         value: ./uploads
+      - key: PYTHON_VERSION
+        value: 3.11.9

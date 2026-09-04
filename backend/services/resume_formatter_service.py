@@ -1,18 +1,29 @@
 import anthropic
 import json
 import os
+import re
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 MODEL = "claude-sonnet-4-6"
 
 
 def _parse_json_response(text: str):
+    """Extract a JSON object from a model response, tolerating commentary or code fences
+    anywhere around it (models don't always follow "JSON only" instructions exactly)."""
     text = text.strip()
-    if text.startswith("```"):
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
-    return json.loads(text.strip())
+
+    fence_match = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
+    if fence_match:
+        try:
+            return json.loads(fence_match.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return json.loads(text[start:end + 1])
+
+    return json.loads(text)
 
 
 def _extract_text_blocks(content) -> str:
@@ -83,7 +94,7 @@ Rules:
 - Only report facts you can attribute to a source found via search.
 - If multiple facilities share this name, use the one matching the given location.
 - You must always end by returning the JSON object, even if most fields are null.
-Return only valid JSON, no commentary."""
+- Do not write any explanation, reasoning, or notes before or after the JSON — not even a short one. Your entire response must be nothing but the JSON object itself, starting with {{ and ending with }}."""
 
     import logging
 
@@ -92,7 +103,7 @@ Return only valid JSON, no commentary."""
         try:
             response = client.messages.create(
                 model=MODEL,
-                max_tokens=4096,
+                max_tokens=6000,
                 tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 2}],
                 messages=[{"role": "user", "content": prompt}]
             )

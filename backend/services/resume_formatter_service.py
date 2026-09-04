@@ -99,7 +99,10 @@ Return only valid JSON, no commentary."""
             text = _extract_text_blocks(response.content)
             if not text.strip():
                 raise ValueError(f"empty text in response (stop_reason={response.stop_reason})")
-            result = _parse_json_response(text)
+            try:
+                result = _parse_json_response(text)
+            except Exception as parse_err:
+                raise ValueError(f"{parse_err} -- raw text was: {text[:500]!r}") from parse_err
             result["facility_name"] = facility_name
             return result
         except Exception as e:

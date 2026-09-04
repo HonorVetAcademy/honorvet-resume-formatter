@@ -34,6 +34,8 @@ An INCORRECT output would repeat the 20 fragments as 20 separate one-line bullet
 
 The "skills" list (separate from duties) is still fine as a flat list of short skill terms — this rewrite requirement is specifically about the per-job "duties" arrays.
 
+BOLD HIGHLIGHTING in "professional_summary": wrap the single most standout, recruiter-relevant phrase in each summary bullet with **double asterisks** — e.g. years of experience ("**1.5 years of clinical experience**"), a specialty/trauma level ("**Level I Trauma Center**"), or a notable credential/award ("**six-time Daisy Award nominee**"). Bold at most one short phrase per bullet (a few words, never the whole sentence), and only wrap something that is genuinely a standout qualifier — do not bold everything. Do not use bold markers anywhere else (not in duties, skills, or any other field).
+
 RESUME TEXT:
 {resume_text}
 

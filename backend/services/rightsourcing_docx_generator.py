@@ -10,7 +10,7 @@ from services.resume_docx_generator import _section_header, _bullet, _plain_line
 
 
 def generate_rightsourcing_docx(resume: dict, output_dir: str) -> str:
-    """Render a structured resume into the RightSourcing/Magnit submission format:
+    """Render a structured resume into the HonorVet standard submission format:
     intro table, summary, skills, education, licenses & certs, professional experience."""
     os.makedirs(output_dir, exist_ok=True)
     doc = Document()
@@ -144,7 +144,7 @@ def generate_rightsourcing_docx(resume: dict, output_dir: str) -> str:
                 _bullet(doc, duty, indent=True)
 
     safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", resume.get("full_name", "candidate"))
-    filename = f"{safe_name}_RightSourcing_{datetime.now().strftime('%Y%m%d%H%M%S')}.docx"
+    filename = f"{safe_name}_HonorVet_{datetime.now().strftime('%Y%m%d%H%M%S')}.docx"
     filepath = os.path.join(output_dir, filename)
     doc.save(filepath)
     return filepath

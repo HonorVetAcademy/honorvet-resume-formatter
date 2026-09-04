@@ -11,8 +11,8 @@ MODEL = "claude-sonnet-4-6"
 
 
 def extract_structured_resume_rightsourcing(resume_text: str) -> dict:
-    """Parse raw resume text into the RightSourcing/Magnit submission structure."""
-    prompt = f"""You are formatting a resume for submission to a healthcare staffing client (RightSourcing / Magnit). Parse the resume below into structured JSON.
+    """Parse raw resume text into the HonorVet standard submission structure."""
+    prompt = f"""You are formatting a resume for submission to a healthcare staffing client. Parse the resume below into structured JSON.
 
 Preserve the candidate's own wording for the summary and duty bullets — clean up only grammar/spacing, do not invent or embellish content. Do not fabricate any facts not present in the source resume.
 
@@ -246,5 +246,5 @@ Return only valid JSON, no commentary."""
 
 
 def run_checklist(resume_text: str, resume: dict) -> list:
-    """Run the RightSourcing/Magnit submission checklist against a formatted resume. Resume-content checks only — items requiring separate documents (interview availability, reference check sheet) aren't covered here."""
+    """Run the HonorVet standard submission checklist against a formatted resume. Resume-content checks only — items requiring separate documents (interview availability, reference check sheet) aren't covered here."""
     return _deterministic_checks(resume) + _llm_qualitative_checks(resume_text, resume)

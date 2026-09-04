@@ -9,8 +9,8 @@ const STAGES = [
   { key: 'upload', label: 'Uploading resume' },
   { key: 'parse', label: 'Extracting resume content' },
   { key: 'research', label: 'Researching facilities (Facility Type, Trauma Level, EMR)' },
-  { key: 'checklist', label: 'Running RightSourcing submission checklist' },
-  { key: 'format', label: 'Building submission document' },
+  { key: 'checklist', label: 'Running submission checklist' },
+  { key: 'format', label: 'Building formatted document' },
 ]
 
 const confidenceColor: Record<string, string> = {
@@ -42,7 +42,7 @@ function ChecklistRow({ item }: { item: ChecklistItem }) {
   )
 }
 
-export default function RightSourcingTab() {
+export default function ResumeFormatter() {
   const [file, setFile] = useState<File | null>(null)
   const [processing, setProcessing] = useState(false)
   const [stageIndex, setStageIndex] = useState(0)
@@ -88,10 +88,10 @@ export default function RightSourcingTab() {
   const warnCount = sortedChecklist.filter(c => c.status === 'warning').length
 
   return (
-    <div>
+    <div className="p-8 max-w-4xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">RightSourcing Submission Formatter</h1>
-        <p className="text-gray-500 mt-1">Upload a raw resume — we'll format it for RightSourcing/Magnit submission and check it against their pre-submission checklist before you send it.</p>
+        <h1 className="text-2xl font-bold text-gray-900">Resume Formatter</h1>
+        <p className="text-gray-500 mt-1">Upload a raw resume — we'll reformat it to HonorVet standard and check it against the submission checklist before you send it.</p>
       </div>
 
       {!result && (

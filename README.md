@@ -5,7 +5,9 @@ A local tool with two formatting modes:
 - **HonorVet Standard** — reformats a raw resume into HonorVet's standard layout, with facility type, trauma level, bed size, and EMR/charting system automatically researched for each employer.
 - **RightSourcing** — formats a resume for RightSourcing/Magnit client submission (intro table, Skills section, Position Type/Agency Name placeholders) and runs it against RightSourcing's pre-submission checklist before you download it, flagging missing fields, expired licenses, future/typo'd dates, and unexplained employment gaps.
 
-This app runs locally only (not publicly hosted) — your Anthropic API key stays in a local `.env` file and is never exposed.
+**Live app:** https://honorvetacademy.github.io/honorvet-resume-formatter/ (frontend on GitHub Pages, backend on Render — the Anthropic API key lives only as a server-side environment variable on Render, never in the repo or the browser)
+
+Open to anyone with the link — no login. Since usage is billed to HonorVet's Anthropic account, don't share the link outside the org.
 
 ## How it works
 
@@ -26,7 +28,12 @@ Facility research confidence + sources are always shown in the UI — AI-researc
 | AI | Claude (`claude-sonnet-4-6`) via Anthropic SDK, with the hosted `web_search` tool for facility research |
 | Document generation | python-docx |
 
-## Setup
+## Deployment
+
+- **Backend** deploys to [Render](https://render.com) from `render.yaml` — a FastAPI web service. `ANTHROPIC_API_KEY` is set as a Render environment variable (never committed).
+- **Frontend** builds as a static Next.js export (`output: 'export'`) and deploys to GitHub Pages via `.github/workflows/deploy.yml` on every push to `master`. `NEXT_PUBLIC_API_URL` is baked in at build time from the `NEXT_PUBLIC_API_URL` repository variable, pointing at the Render backend's URL.
+
+## Local development
 
 ### Prerequisites
 - Python 3.11+
@@ -56,7 +63,7 @@ npm install
 npm run dev
 ```
 
-Open: http://localhost:3000
+Open: http://localhost:3000 (talks to the local backend, not the deployed one)
 
 ## Architecture
 

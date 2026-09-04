@@ -166,6 +166,7 @@ def build_formatted_resume(structured: dict, facility_research: dict) -> dict:
             "emr_system": research.get("emr_system"),
             "research_confidence": research.get("confidence", "low"),
             "research_sources": research.get("sources", []),
+            "research_debug_error": research.get("error"),
         })
 
     return {**structured, "experience": experience}

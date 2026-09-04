@@ -14,9 +14,25 @@ def extract_structured_resume_rightsourcing(resume_text: str) -> dict:
     """Parse raw resume text into the HonorVet standard submission structure."""
     prompt = f"""You are formatting a resume for submission to a healthcare staffing client. Parse the resume below into structured JSON.
 
-Preserve the candidate's own wording and facts — do not invent or embellish content, and do not fabricate any facts not present in the source resume. But DO reformat for readability:
-- If the source resume lists duties as a dense run of short comma/semicolon-separated fragments (e.g., "Sedation, Titrated drips, Ventilated patients, Belmont, RSI"), do not copy each fragment as its own one- or two-word bullet. Instead, group related fragments into a smaller number of complete, well-formed bullets (e.g., "Managed sedation, titrated drips, and ventilated patients" / "Performed RSI and utilized the Belmont rapid infuser"). Aim for roughly 4-8 substantive bullets per job, each a full phrase or sentence, not a single word or acronym standing alone.
-- The "skills" list (separate from duties) is still fine as a flat list of short skill terms — this consolidation guidance is specifically about the per-job "duties" bullets, which should read like a professionally formatted resume, not a raw keyword dump.
+Do not invent, embellish, or fabricate any facts not present in the source resume — every duty you write must be traceable to something the candidate actually wrote.
+
+MANDATORY REWRITE STEP for "duties": many resumes list duties as a dense run of short comma-separated fragments, one clinical task after another. You MUST NOT copy those fragments through as one array item each. You must rewrite them into a HARD MAXIMUM of 8 full-sentence bullets per job, each combining several related fragments into a real sentence. This is a required transformation, not optional cleanup.
+
+Worked example — INPUT fragment from a resume:
+"Emergency Department, Trauma 1 experience, Works with 3 to 4 patients, Care for critical patients, Sedation, Titrated drips, Ventilated patients, Ultrasound guided IV, Float between pods, Transport of critical patients, Care handoffs to receiving units, Belmont, Arterial line set up and use, Preceptor to new graduates, Triaging EMS patients, Critical care for trauma I & II patients, Phlebotomy, Endo Tool, RSI, MTP, Life Flow"
+
+The CORRECT "duties" array for that input looks like this (5 bullets, not 20):
+[
+  "Provided emergency department care with Trauma 1 experience, managing 3 to 4 critical patients at a time.",
+  "Managed sedation, titrated drips, and ventilated patients, including arterial line setup and Ultrasound-guided IV insertion.",
+  "Performed RSI and assisted with MTP using the Belmont rapid infuser; utilized the Endo Tool and Life Flow as needed.",
+  "Floated between pods, triaged EMS patients, transported critical patients, and handed off care to receiving units.",
+  "Precepted new graduate nurses and performed phlebotomy and critical care for Trauma I & II patients."
+]
+
+An INCORRECT output would repeat the 20 fragments as 20 separate one-line bullets — do not do that, even though it may look like "preserving the candidate's wording." Combining fragments into full sentences IS preserving their meaning; it is the required format, not embellishment.
+
+The "skills" list (separate from duties) is still fine as a flat list of short skill terms — this rewrite requirement is specifically about the per-job "duties" arrays.
 
 RESUME TEXT:
 {resume_text}

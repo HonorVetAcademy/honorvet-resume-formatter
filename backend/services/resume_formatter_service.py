@@ -46,7 +46,7 @@ Return a JSON object with exactly these fields:
 }}
 
 Rules:
-- Do 1-2 searches at most, then answer with what you found. Do not keep searching to verify every field — a couple of searches is enough.
+- Do exactly 2 searches: (1) a general search for the facility's type and trauma designation, and (2) a SEPARATE, specific search for its EMR/charting system — e.g. "{facility_name} Epic Cerner Meditech EMR" or "{facility_name} electronic health record system". EMR information is usually in different sources (health IT news, job postings, vendor case studies) than general facility info, so it needs its own dedicated search — do not skip it or fold it into the first search.
 - Prefer null over a guess. Do not fabricate data.
 - Only report facts you can attribute to a source found via search.
 - If multiple facilities share this name, use the one matching the given location.
@@ -61,7 +61,7 @@ Rules:
             response = client.messages.create(
                 model=MODEL,
                 max_tokens=6000,
-                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 2}],
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
                 messages=[{"role": "user", "content": prompt}]
             )
             text = _extract_text_blocks(response.content)

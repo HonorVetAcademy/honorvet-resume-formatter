@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from starlette.concurrency import run_in_threadpool
 from dotenv import load_dotenv
 import os
 import shutil
@@ -51,7 +52,13 @@ async def format_resume_rightsourcing(resume: UploadFile = File(...)):
         shutil.copyfileobj(resume.file, f)
 
     try:
-        resume_text = extract_resume_text(file_path)
+        # OCR on a scanned resume can take tens of seconds of pure CPU work. This
+        # process runs a single worker (WEB_CONCURRENCY=1 on Render's free tier),
+        # so calling it directly here would block the whole event loop for that
+        # whole time — including Render's own health-check pings, which then
+        # read the service as unresponsive and restart it mid-request. Running
+        # it in a thread keeps the loop free to answer those pings.
+        resume_text = await run_in_threadpool(extract_resume_text, file_path)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not read resume file: {e}")
 
@@ -59,14 +66,14 @@ async def format_resume_rightsourcing(resume: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="No readable text found in the uploaded resume.")
 
     try:
-        structured = extract_structured_resume_rightsourcing(resume_text)
+        structured = await run_in_threadpool(extract_structured_resume_rightsourcing, resume_text)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Failed to parse resume content: {e}")
 
-    checklist = run_checklist(structured)
+    checklist = await run_in_threadpool(run_checklist, structured)
 
     try:
-        docx_path = generate_rightsourcing_docx(structured, OUTPUT_DIR)
+        docx_path = await run_in_threadpool(generate_rightsourcing_docx, structured, OUTPUT_DIR)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate formatted document: {e}")
 

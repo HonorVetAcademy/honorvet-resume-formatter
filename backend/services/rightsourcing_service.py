@@ -1,99 +1,53 @@
-import anthropic
-import json
-import os
 import re
 from datetime import datetime
 
-from services.resume_formatter_service import _parse_json_response
-
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-MODEL = "claude-sonnet-4-6"
-
+from services.rightsourcing_parser import extract_structured_resume_rightsourcing_deterministic
 
 NOT_LISTED = "Not Listed"
 
-_EXPERIENCE_DEFAULTS = ("emr", "position_type", "agency_name", "trauma_level", "facility_type")
+US_STATES = {
+    "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR", "california": "CA",
+    "colorado": "CO", "connecticut": "CT", "delaware": "DE", "florida": "FL", "georgia": "GA",
+    "hawaii": "HI", "idaho": "ID", "illinois": "IL", "indiana": "IN", "iowa": "IA",
+    "kansas": "KS", "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD",
+    "massachusetts": "MA", "michigan": "MI", "minnesota": "MN", "mississippi": "MS",
+    "missouri": "MO", "montana": "MT", "nebraska": "NE", "nevada": "NV",
+    "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY",
+    "north carolina": "NC", "north dakota": "ND", "ohio": "OH", "oklahoma": "OK",
+    "oregon": "OR", "pennsylvania": "PA", "rhode island": "RI", "south carolina": "SC",
+    "south dakota": "SD", "tennessee": "TN", "texas": "TX", "utah": "UT", "vermont": "VT",
+    "virginia": "VA", "washington": "WA", "west virginia": "WV", "wisconsin": "WI",
+    "wyoming": "WY", "district of columbia": "DC",
+}
+US_STATE_ABBREVIATIONS = set(US_STATES.values())
+# Longest names first, so "north carolina" matches before "carolina"-style partial overlaps.
+_STATE_NAME_RE = re.compile(
+    r"\b(" + "|".join(sorted(US_STATES, key=len, reverse=True)) + r")\b", re.IGNORECASE
+)
+
+
+def _find_states(text: str) -> set:
+    found = {abbr for abbr in re.findall(r"\b([A-Z]{2})\b", text) if abbr in US_STATE_ABBREVIATIONS}
+    found |= {US_STATES[name.lower()] for name in _STATE_NAME_RE.findall(text)}
+    return found
 
 
 def extract_structured_resume_rightsourcing(resume_text: str) -> dict:
     """Parse raw resume text into the HonorVet standard submission structure.
 
-    Strict, non-inferring transcription only — no facts, research, or rewriting beyond
-    what the candidate's own resume states. See rightsourcing formatting rules."""
-    prompt = f"""You are transcribing a resume into a standardized structure for submission to a healthcare staffing client. Follow every rule below exactly.
+    Fully deterministic — no AI calls. Only information explicitly present in the
+    resume is captured; anything not stated is marked "Not Listed" rather than
+    inferred or researched. Assumes the upload is the resume itself (in the
+    HonorVet labeled-field convention) and not a multi-document packet — a
+    parser with no AI can't tell resume content apart from a bundled cover
+    sheet, clearance form, or certificate scan in the same file."""
+    structured = extract_structured_resume_rightsourcing_deterministic(resume_text)
 
-RULES:
-1. Do not add, assume, infer, fabricate, or rewrite any information that is not present in the raw resume.
-2. Use only the information provided in the raw resume.
-3. Preserve all employment dates exactly as provided, but format each as "Mon YYYY" (e.g. "Jan 2025") or "Present" so the duration can be rendered consistently as "Month Year – Month Year".
-4. Maintain the same capitalization, spacing, punctuation, and overall wording shown in the raw resume wherever you transcribe text from it.
-5. Do not omit any information from the raw resume — every job, bullet, credential, and detail must appear somewhere in the output. This includes any explicitly labeled facility detail that isn't one of the six standard fields below (e.g. a resume that states "Patient Ratio: 1:6", "Bed Size: 293", or "Patient Population: Geriatric Behavioral Health" for a job) — capture every such labeled detail in that job's "additional_details" array, using the label exactly as the resume states it.
-6. If a required field is not provided in the raw resume, use the exact string "Not Listed".
-7. Do not infer an EMR from a general skills section. Only report an EMR for a job if the raw resume explicitly associates that EMR with that specific facility/job.
-8. Do not infer an agency name from the fact that a position is labeled "Travel". If the agency is not explicitly named, use "Not Listed".
-9. Do not infer Trauma Level or Facility Type from the facility's name or reputation. If not explicitly stated in the resume, use "Not Listed".
-10. Do not add phone number, email, license information, certification expiration dates, facility details, patient ratios, agency names, EMRs, trauma levels, facility types, or any other detail unless it is explicitly present in the raw resume.
-11. Keep the candidate's original job titles and employment descriptions as close to the raw resume's wording as possible.
-12. Do not create new bullet points, combine/rewrite duty fragments into new sentences, or add achievements that are not in the raw resume — transcribe each duty/bullet as the candidate wrote it, only cleaning up obvious spacing.
-13. Do not change the meaning of any information.
-14. Preserve certifications and licenses exactly as listed, only cleaning up minor spacing.
-
-Classify each licensure/certification entry into exactly one of two buckets:
-- "licenses": state RN (or other professional practice) licenses — typically has a license number.
-- "certifications": things like ACLS, BLS, PALS, NIHSS, CNOR, etc. — typically no license number.
-
-RESUME TEXT:
-{resume_text}
-
-Return a JSON object with this exact schema:
-{{
-  "full_name": "<candidate's name in Firstname Lastname capitalization, no credentials>",
-  "credentials_suffix": "<credentials after name if stated, e.g. 'BSN, RN, CNOR', else empty string>",
-  "professional_headline": "<a professional headline/title tagline ONLY if the resume states one, else empty string>",
-  "phone": "<phone number, else empty string>",
-  "email": "<email, else empty string>",
-  "permanent_address": "<full street address / city, state as stated in the resume, else empty string>",
-  "professional_summary": ["<bullet 1 transcribed from the resume's own summary>", ...],
-  "core_qualifications": ["<skill/qualification 1, transcribed as listed>", ...],
-  "education": [{{"degree": "<degree>", "school": "<school name>", "location": "<city, state>", "date": "<date as stated>"}}],
-  "licenses": [{{"name": "<license name, e.g. 'RN Compact License (Georgia)'>", "id": "<license number if stated, else empty string>", "expires": "<expiration date if stated, else empty string>"}}],
-  "certifications": [{{"name": "<certification name, e.g. 'ACLS (Advanced Cardiac Life Support)'>", "id": "<id if stated, else empty string>", "expires": "<expiration date if stated, else empty string>"}}],
-  "experience": [
-    {{
-      "facility_name": "<employer/facility name as written>",
-      "city": "<city, else empty string>",
-      "state": "<state, else empty string>",
-      "start_date": "<start date, e.g. 'Jan 2025'>",
-      "end_date": "<end date or 'Present'>",
-      "job_title": "<exact job title as stated>",
-      "emr": "<EMR explicitly tied to THIS facility in the resume, else 'Not Listed'>",
-      "position_type": "<Staff/PRN/Travel/Contract/etc. ONLY if explicitly stated, else 'Not Listed'>",
-      "agency_name": "<staffing agency name ONLY if explicitly stated, else 'Not Listed'>",
-      "trauma_level": "<ONLY if explicitly stated in the resume, else 'Not Listed'>",
-      "facility_type": "<ONLY if explicitly stated in the resume, else 'Not Listed'>",
-      "additional_details": [{{"label": "<exact label from the resume, e.g. 'Patient Ratio'>", "value": "<value as stated>"}}],
-      "duties": ["<duty/bullet exactly as the candidate wrote it, minor spacing cleanup only>", ...]
-    }}
-  ]
-}}
-
-List experience most-recent-first. Return only valid JSON, no commentary."""
-
-    message = client.messages.create(
-        model=MODEL,
-        max_tokens=4000,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    structured = _parse_json_response(message.content[0].text)
-
-    experience = []
-    for entry in structured.get("experience", []):
-        entry = dict(entry)
-        for field in _EXPERIENCE_DEFAULTS:
-            if not entry.get(field):
-                entry[field] = NOT_LISTED
-        experience.append(entry)
-    structured["experience"] = experience
+    if not structured.get("experience") and not structured.get("phone") and not structured.get("email"):
+        raise ValueError(
+            "Couldn't find resume content in this file. Upload just the resume itself — "
+            "not a packet bundling a cover sheet, clearance form, or certificate scans."
+        )
 
     return structured
 
@@ -141,6 +95,31 @@ def _deterministic_checks(resume: dict) -> list:
         "status": "pass" if has_contact else "fail",
         "detail": "" if has_contact else "Missing phone and/or email",
     })
+
+    # Professional summary present
+    has_summary = bool(resume.get("professional_summary"))
+    checks.append({
+        "id": "summary_bullets",
+        "label": "Professional summary present",
+        "status": "pass" if has_summary else "warning",
+        "detail": "" if has_summary else "No professional summary bullets found",
+    })
+
+    # License state matches candidate's address/work history
+    license_states = set()
+    for lic in resume.get("licenses", []):
+        license_states |= _find_states(lic.get("name", ""))
+    work_states = {job.get("state", "") for job in resume.get("experience", []) if job.get("state")}
+    address_states = _find_states(resume.get("permanent_address", ""))
+    known_states = work_states | address_states
+    if license_states and known_states:
+        overlap = license_states & known_states
+        checks.append({
+            "id": "license_state_matches",
+            "label": "License state matches candidate location/work history",
+            "status": "pass" if overlap else "warning",
+            "detail": "" if overlap else f"Licensed in {', '.join(sorted(license_states))} but address/work history shows {', '.join(sorted(known_states))}",
+        })
 
     # Licenses/certifications not expired
     for cert in resume.get("licenses", []) + resume.get("certifications", []):
@@ -222,43 +201,6 @@ def _deterministic_checks(resume: dict) -> list:
     return checks
 
 
-def _llm_qualitative_checks(resume_text: str, resume: dict) -> list:
-    """Ask Claude to review the softer, judgment-based checklist items."""
-    prompt = f"""You are QA-reviewing a healthcare staffing resume submission against a client checklist. Review the ORIGINAL resume text and the PARSED structure below.
-
-ORIGINAL RESUME TEXT:
-{resume_text}
-
-PARSED STRUCTURE:
-{json.dumps(resume, indent=2)}
-
-Check these specific items and return a JSON array, one object per item, in this exact order:
-1. "summary_bullets" — Is the professional summary in bullet points and does it clearly highlight why this candidate is a strong match for their field?
-2. "hospital_settings_consistent" — Are the candidate's hospital/facility settings across jobs consistent with each other (no contradictions in acuity level, unit type, etc.)?
-3. "gaps_explained_in_text" — For any employment gaps, does the resume text itself explain them anywhere (e.g., mentions of leave, education, relocation)? If there are no gaps, mark this "pass".
-4. "license_state_matches" — Does the state license mentioned match the state(s) the candidate worked in or lists as their address?
-
-Return a JSON array of exactly 4 objects, in the order above:
-[
-  {{"id": "summary_bullets", "label": "Summary is bulleted and highlights fit", "status": "pass|fail|warning", "detail": "<one sentence>"}},
-  {{"id": "hospital_settings_consistent", "label": "Hospital settings consistent across experience", "status": "pass|fail|warning", "detail": "<one sentence>"}},
-  {{"id": "gaps_explained_in_text", "label": "Employment gaps explained in resume text", "status": "pass|fail|warning", "detail": "<one sentence>"}},
-  {{"id": "license_state_matches", "label": "License state matches candidate location/work history", "status": "pass|fail|warning", "detail": "<one sentence>"}}
-]
-
-Return only valid JSON, no commentary."""
-
-    try:
-        message = client.messages.create(
-            model=MODEL,
-            max_tokens=1000,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return _parse_json_response(message.content[0].text)
-    except Exception as e:
-        return [{"id": "qualitative_review_error", "label": "Qualitative checklist review", "status": "warning", "detail": f"Could not complete: {e}"}]
-
-
-def run_checklist(resume_text: str, resume: dict) -> list:
+def run_checklist(resume: dict) -> list:
     """Run the HonorVet standard submission checklist against a formatted resume. Resume-content checks only — items requiring separate documents (interview availability, reference check sheet) aren't covered here."""
-    return _deterministic_checks(resume) + _llm_qualitative_checks(resume_text, resume)
+    return _deterministic_checks(resume)

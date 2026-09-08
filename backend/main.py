@@ -61,9 +61,9 @@ async def format_resume_rightsourcing(resume: UploadFile = File(...)):
     try:
         structured = extract_structured_resume_rightsourcing(resume_text)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to parse resume content: {e}")
+        raise HTTPException(status_code=422, detail=f"Failed to parse resume content: {e}")
 
-    checklist = run_checklist(resume_text, structured)
+    checklist = run_checklist(structured)
 
     try:
         docx_path = generate_rightsourcing_docx(structured, OUTPUT_DIR)

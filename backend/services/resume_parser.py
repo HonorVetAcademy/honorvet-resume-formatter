@@ -1,11 +1,8 @@
-import base64
-import os
-import anthropic
 import PyPDF2
 import docx
 from pathlib import Path
 
-_claude_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+_IMAGE_MEDIA_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
 
 
 def extract_text_from_pdf(file_path: str) -> str:
@@ -18,49 +15,6 @@ def extract_text_from_pdf(file_path: str) -> str:
     return text.strip()
 
 
-def extract_text_from_scanned_pdf(file_path: str) -> str:
-    """Fallback for scanned/image-based PDFs with no embedded text layer — Claude reads the document directly."""
-    with open(file_path, "rb") as f:
-        data = base64.standard_b64encode(f.read()).decode("utf-8")
-
-    message = _claude_client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=4000,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": data}},
-                {"type": "text", "text": "Extract all text from this resume document, in reading order. Return only the extracted text, no commentary."},
-            ],
-        }],
-    )
-    return message.content[0].text.strip()
-
-
-_IMAGE_MEDIA_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
-
-
-def extract_text_from_image(file_path: str) -> str:
-    """Extract text from a photo/screenshot of a resume via Claude's vision."""
-    ext = Path(file_path).suffix.lower()
-    media_type = _IMAGE_MEDIA_TYPES[ext]
-    with open(file_path, "rb") as f:
-        data = base64.standard_b64encode(f.read()).decode("utf-8")
-
-    message = _claude_client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=4000,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}},
-                {"type": "text", "text": "Extract all text from this resume image, in reading order. Return only the extracted text, no commentary."},
-            ],
-        }],
-    )
-    return message.content[0].text.strip()
-
-
 def extract_text_from_docx(file_path: str) -> str:
     """Extract text from a Word document."""
     doc = docx.Document(file_path)
@@ -69,12 +23,13 @@ def extract_text_from_docx(file_path: str) -> str:
 
 
 def extract_resume_text(file_path: str) -> str:
-    """Extract text from a resume file (PDF or DOCX)."""
+    """Extract text from a resume file (PDF or DOCX). Requires a real text layer —
+    there's no OCR/vision fallback, so scanned PDFs and image files aren't supported."""
     ext = Path(file_path).suffix.lower()
     if ext == ".pdf":
         text = extract_text_from_pdf(file_path)
         if not text.strip():
-            text = extract_text_from_scanned_pdf(file_path)
+            raise ValueError("This PDF has no extractable text layer (it looks scanned/image-based). Upload a text-based PDF or DOCX instead.")
         return text
     elif ext in (".docx", ".doc"):
         return extract_text_from_docx(file_path)
@@ -82,6 +37,6 @@ def extract_resume_text(file_path: str) -> str:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             return f.read()
     elif ext in _IMAGE_MEDIA_TYPES:
-        return extract_text_from_image(file_path)
+        raise ValueError("Image files aren't supported. Upload a text-based PDF or DOCX instead.")
     else:
         raise ValueError(f"Unsupported file type: {ext}")

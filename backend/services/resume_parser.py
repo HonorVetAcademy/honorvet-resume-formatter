@@ -1,4 +1,5 @@
 import gc
+import numpy as np
 import PyPDF2
 import docx
 import pymupdf as fitz
@@ -36,16 +37,19 @@ def extract_text_from_scanned_pdf(file_path: str) -> str:
 
     Renders at a deliberately modest 100 DPI and frees each page's image before
     moving to the next — this runs on a memory-constrained (512MB) host, and a
-    multi-page scan at a higher DPI was enough to OOM-crash the whole process."""
+    multi-page scan at a higher DPI was enough to crash the whole process. Passes
+    the raw pixel array straight to RapidOCR rather than round-tripping through
+    PNG encode/decode, which cost real time and an extra full-image buffer for
+    no benefit — RapidOCR would only decode it right back to an array anyway."""
     ocr = _get_ocr_engine()
     pages_text = []
     with fitz.open(file_path) as doc:
         for page in doc:
             pix = page.get_pixmap(dpi=100)
-            img_bytes = pix.tobytes("png")
+            arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+            result, _ = ocr(arr)
             pix = None
-            result, _ = ocr(img_bytes)
-            img_bytes = None
+            arr = None
             if result:
                 pages_text.append("\n".join(line[1] for line in result))
             gc.collect()

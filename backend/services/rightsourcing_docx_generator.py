@@ -148,6 +148,10 @@ def generate_rightsourcing_docx(resume: dict, output_dir: str) -> str:
             _line_or_not_listed(doc, "e. Trauma Level", job.get("trauma_level"))
             _line_or_not_listed(doc, "f. Facility Type", job.get("facility_type"))
 
+            for extra in job.get("additional_details", []):
+                if extra.get("label") and extra.get("value"):
+                    _plain_line(doc, extra["label"], extra["value"])
+
             for duty in job.get("duties", []):
                 _bullet(doc, duty)
 

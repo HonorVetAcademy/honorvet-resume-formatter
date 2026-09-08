@@ -5,6 +5,7 @@ export interface RightSourcingExperience {
   start_date: string; end_date: string; job_title: string;
   emr: string; position_type: string; agency_name: string;
   trauma_level: string; facility_type: string;
+  additional_details: { label: string; value: string }[];
   duties: string[];
 }
 

@@ -190,6 +190,9 @@ export default function ResumeFormatter() {
                     <div><span className="text-gray-400">Agency Name: </span>{job.agency_name}</div>
                     <div><span className="text-gray-400">Trauma Level: </span>{job.trauma_level}</div>
                     <div><span className="text-gray-400">Facility Type: </span>{job.facility_type}</div>
+                    {job.additional_details?.map((d, di) => (
+                      <div key={di}><span className="text-gray-400">{d.label}: </span>{d.value}</div>
+                    ))}
                   </div>
                 </div>
               ))}

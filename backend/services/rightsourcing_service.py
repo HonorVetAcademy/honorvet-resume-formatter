@@ -27,7 +27,7 @@ RULES:
 2. Use only the information provided in the raw resume.
 3. Preserve all employment dates exactly as provided, but format each as "Mon YYYY" (e.g. "Jan 2025") or "Present" so the duration can be rendered consistently as "Month Year – Month Year".
 4. Maintain the same capitalization, spacing, punctuation, and overall wording shown in the raw resume wherever you transcribe text from it.
-5. Do not omit any information from the raw resume — every job, bullet, credential, and detail must appear somewhere in the output.
+5. Do not omit any information from the raw resume — every job, bullet, credential, and detail must appear somewhere in the output. This includes any explicitly labeled facility detail that isn't one of the six standard fields below (e.g. a resume that states "Patient Ratio: 1:6", "Bed Size: 293", or "Patient Population: Geriatric Behavioral Health" for a job) — capture every such labeled detail in that job's "additional_details" array, using the label exactly as the resume states it.
 6. If a required field is not provided in the raw resume, use the exact string "Not Listed".
 7. Do not infer an EMR from a general skills section. Only report an EMR for a job if the raw resume explicitly associates that EMR with that specific facility/job.
 8. Do not infer an agency name from the fact that a position is labeled "Travel". If the agency is not explicitly named, use "Not Listed".
@@ -71,6 +71,7 @@ Return a JSON object with this exact schema:
       "agency_name": "<staffing agency name ONLY if explicitly stated, else 'Not Listed'>",
       "trauma_level": "<ONLY if explicitly stated in the resume, else 'Not Listed'>",
       "facility_type": "<ONLY if explicitly stated in the resume, else 'Not Listed'>",
+      "additional_details": [{{"label": "<exact label from the resume, e.g. 'Patient Ratio'>", "value": "<value as stated>"}}],
       "duties": ["<duty/bullet exactly as the candidate wrote it, minor spacing cleanup only>", ...]
     }}
   ]

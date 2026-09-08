@@ -1,8 +1,21 @@
 import PyPDF2
 import docx
+import pymupdf as fitz
 from pathlib import Path
+from rapidocr_onnxruntime import RapidOCR
 
 _IMAGE_MEDIA_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
+
+_ocr_engine = None
+
+
+def _get_ocr_engine() -> RapidOCR:
+    """Lazily construct the OCR engine — it loads ONNX models from disk, so building
+    it once and reusing it is much cheaper than one per request."""
+    global _ocr_engine
+    if _ocr_engine is None:
+        _ocr_engine = RapidOCR()
+    return _ocr_engine
 
 
 def extract_text_from_pdf(file_path: str) -> str:
@@ -15,6 +28,27 @@ def extract_text_from_pdf(file_path: str) -> str:
     return text.strip()
 
 
+def extract_text_from_scanned_pdf(file_path: str) -> str:
+    """OCR fallback for PDFs with no embedded text layer (scanned/photographed pages).
+    Fully local and offline — PyMuPDF rasterizes each page, RapidOCR (CPU-only ONNX
+    models) reads the text. No external API calls."""
+    ocr = _get_ocr_engine()
+    doc = fitz.open(file_path)
+    pages_text = []
+    for page in doc:
+        pix = page.get_pixmap(dpi=200)
+        result, _ = ocr(pix.tobytes("png"))
+        if result:
+            pages_text.append("\n".join(line[1] for line in result))
+    return "\n".join(pages_text).strip()
+
+
+def extract_text_from_image(file_path: str) -> str:
+    """OCR a photo/screenshot of a resume, fully local and offline."""
+    result, _ = _get_ocr_engine()(file_path)
+    return "\n".join(line[1] for line in result).strip() if result else ""
+
+
 def extract_text_from_docx(file_path: str) -> str:
     """Extract text from a Word document."""
     doc = docx.Document(file_path)
@@ -23,13 +57,15 @@ def extract_text_from_docx(file_path: str) -> str:
 
 
 def extract_resume_text(file_path: str) -> str:
-    """Extract text from a resume file (PDF or DOCX). Requires a real text layer —
-    there's no OCR/vision fallback, so scanned PDFs and image files aren't supported."""
+    """Extract text from a resume file (PDF, DOCX, TXT, or image). Scanned PDFs and
+    photos fall back to local OCR — no external API calls anywhere in this path."""
     ext = Path(file_path).suffix.lower()
     if ext == ".pdf":
         text = extract_text_from_pdf(file_path)
         if not text.strip():
-            raise ValueError("This PDF has no extractable text layer (it looks scanned/image-based). Upload a text-based PDF or DOCX instead.")
+            text = extract_text_from_scanned_pdf(file_path)
+        if not text.strip():
+            raise ValueError("Couldn't read any text from this PDF, even with OCR. It may be blank or too low-quality to scan.")
         return text
     elif ext in (".docx", ".doc"):
         return extract_text_from_docx(file_path)
@@ -37,6 +73,9 @@ def extract_resume_text(file_path: str) -> str:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             return f.read()
     elif ext in _IMAGE_MEDIA_TYPES:
-        raise ValueError("Image files aren't supported. Upload a text-based PDF or DOCX instead.")
+        text = extract_text_from_image(file_path)
+        if not text.strip():
+            raise ValueError("Couldn't read any text from this image, even with OCR.")
+        return text
     else:
         raise ValueError(f"Unsupported file type: {ext}")

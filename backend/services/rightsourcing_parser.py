@@ -12,6 +12,7 @@ SECTION_ALIASES = {
     "summary": "summary",
     "summary statement": "summary",
     "professional summary statement": "summary",
+    "professional profile": "summary",
     "career summary": "summary",
     "objective": "summary",
     "leadership & core qualifications": "qualifications",
@@ -34,7 +35,21 @@ SECTION_ALIASES = {
     "experience": "experience",
     "work experience": "experience",
     "employment history": "experience",
+    # Recognized so their content doesn't bleed into a real section, but the
+    # standard output template has no slot for them — content here is dropped.
+    "honors & awards": "ignored",
+    "honors and awards": "ignored",
+    "awards": "ignored",
+    "professional memberships": "ignored",
+    "memberships": "ignored",
+    "affiliations": "ignored",
+    "professional affiliations": "ignored",
+    "community advocacy": "ignored",
+    "volunteer experience": "ignored",
+    "publications": "ignored",
+    "references": "ignored",
 }
+_SQUASHED_ALIASES = {re.sub(r"[^a-z0-9]", "", k): v for k, v in SECTION_ALIASES.items()}
 
 LABEL_ALIASES = {
     "emr": "emr",
@@ -56,6 +71,7 @@ DATE_RANGE_RE = re.compile(
 )
 _MONTH_YEAR_RE = re.compile(r"^([A-Za-z]{3,9})\.?,?\s*(\d{4})$")
 _SINGLE_DATE_RE = re.compile(r"([A-Za-z]{3,9}\.?,?\s*\d{4})\s*$", re.IGNORECASE)
+_BARE_YEAR_RE = re.compile(r"^\d{4}$")
 FACILITY_TAIL_RE = re.compile(
     r"^(?P<name>.+)\s+[–—-]\s+(?P<city>[A-Za-z][A-Za-z .'&]*),\s*(?P<state>[A-Z]{2})$"
 )
@@ -88,7 +104,12 @@ def _lines(resume_text: str):
 
 def _section_key(line: str):
     normalized = line.rstrip(":").strip().lower()
-    return SECTION_ALIASES.get(normalized)
+    key = SECTION_ALIASES.get(normalized)
+    if key:
+        return key
+    # OCR and glued-header templates sometimes drop the spaces/ampersands
+    # entirely (e.g. "LICENSURE&CERTIFICATIONS") — compare with those stripped too.
+    return _SQUASHED_ALIASES.get(re.sub(r"[^a-z0-9]", "", normalized))
 
 
 def _parse_header(lines):
@@ -161,6 +182,14 @@ def _parse_education(lines):
 
     for line in lines:
         if not line:
+            continue
+
+        if _BARE_YEAR_RE.match(line):
+            # Some templates put just the year on its own line, with no month —
+            # attach it to whatever degree is pending rather than treating a bare
+            # "2022" as its own degree/school entry.
+            if pending_degree:
+                pending_date = pending_date or line
             continue
 
         if "|" in line:
@@ -265,13 +294,18 @@ def _new_job():
 
 
 def _split_facility_city_state(text: str):
-    """Facility/location line comes in at least two conventions across resumes:
-    "Name – City, ST" (dash-separated) or plain "Name, City, ST" (comma-separated).
-    Try the dash form first since it's less ambiguous, then fall back to treating
-    the last two comma segments as city/state if the last one is a state code."""
+    """Facility/location line comes in at least three conventions across resumes:
+    "Name – City, ST" (dash-separated), "Name, City, ST" (comma-separated), or
+    "Name; City, ST" (semicolon-separated). Try the least ambiguous form first."""
     tail_match = FACILITY_TAIL_RE.match(text)
     if tail_match:
         return _clean(tail_match.group("name")), _clean(tail_match.group("city")), tail_match.group("state")
+
+    if ";" in text:
+        name, _, tail = text.rpartition(";")
+        tail_parts = [p.strip() for p in tail.split(",")]
+        if len(tail_parts) == 2 and re.match(r"^[A-Z]{2}$", tail_parts[-1]):
+            return _clean(name), tail_parts[0], tail_parts[1]
 
     parts = [p.strip() for p in text.split(",")]
     if len(parts) >= 3 and re.match(r"^[A-Z]{2}$", parts[-1]):
@@ -291,7 +325,11 @@ def _strip_date(line: str):
 
 
 def _looks_like_title(text: str) -> bool:
-    return bool(text) and len(text.split()) <= 12 and not text.endswith((".", ":"))
+    if not text or len(text.split()) > 12 or text.endswith((".", ":")):
+        return False
+    if "=" in text or re.search(r"\d+\s*(hours?|weeks?)\b", text, re.IGNORECASE):
+        return False
+    return True
 
 
 def _extract_position_type(title: str) -> str:
@@ -299,9 +337,16 @@ def _extract_position_type(title: str) -> str:
     return match.group(1) if match else NOT_LISTED
 
 
+def _is_real_job(job: dict) -> bool:
+    return bool(job["facility_name"] or job["job_title"] or job["start_date"])
+
+
 def _parse_experience(lines):
     jobs = []
-    current = None
+    # Starts as a placeholder so a title line that appears before the very
+    # first job's date-anchor (rather than after it) has somewhere to land —
+    # it's discarded at the end if it never picks up any real content.
+    current = _new_job()
     need_title = False
     need_facility = False
 
@@ -314,27 +359,25 @@ def _parse_experience(lines):
         date_start, date_end, remainder = (None, None, line) if label_match else _strip_date(line)
 
         if date_start:
-            if current:
-                jobs.append(current)
+            closing = current
             current = _new_job()
             current["start_date"], current["end_date"] = date_start, date_end
-            name, city, state = _split_facility_city_state(remainder)
+
+            name, city, state = _split_facility_city_state(remainder) if remainder else ("", "", "")
             if city and state:
                 current["facility_name"], current["city"], current["state"] = name, city, state
-                # The job title may have already been misread as the previous
-                # job's last duty, if it appeared before this line with no
-                # marker to tell them apart — reclaim it when it looks right.
-                if jobs and jobs[-1]["duties"] and _looks_like_title(jobs[-1]["duties"][-1]):
-                    current["job_title"] = jobs[-1]["duties"].pop()
-                need_title = not current["job_title"]
-                need_facility = False
-            else:
+            elif remainder:
                 current["job_title"] = remainder
-                need_title = False
-                need_facility = True
-            continue
 
-        if current is None:
+            # The title may have landed on the closing job's last duty line,
+            # if it appeared with no marker to tell it apart from a duty.
+            if not current["job_title"] and closing["duties"] and _looks_like_title(closing["duties"][-1]):
+                current["job_title"] = closing["duties"].pop()
+
+            need_title = not current["job_title"]
+            need_facility = not current["facility_name"]
+            if _is_real_job(closing):
+                jobs.append(closing)
             continue
 
         if need_facility and not label_match:
@@ -359,7 +402,7 @@ def _parse_experience(lines):
 
         current["duties"].append(BULLET_RE.sub("", line))
 
-    if current:
+    if _is_real_job(current):
         jobs.append(current)
 
     for job in jobs:
@@ -367,6 +410,34 @@ def _parse_experience(lines):
             job["position_type"] = _extract_position_type(job["job_title"])
 
     return jobs
+
+
+def _strip_running_header(lines, header):
+    """A scanned multi-page resume's name/title/contact block often repeats verbatim
+    at the top of every page — without a real page break to signal that, it would
+    otherwise get swept into whatever section/job happens to be open at that point."""
+    known = set()
+    if header["full_name"]:
+        known.add(header["full_name"].lower())
+        if header["credentials_suffix"]:
+            known.add(f"{header['full_name']}, {header['credentials_suffix']}".lower())
+    if header["professional_headline"]:
+        known.add(header["professional_headline"].lower())
+
+    phone_digits = re.sub(r"\D", "", header["phone"] or "")
+    email = (header["email"] or "").lower()
+
+    filtered = []
+    for line in lines:
+        low = line.lower()
+        if low in known:
+            continue
+        if phone_digits and len(phone_digits) >= 7 and re.sub(r"\D", "", line) == phone_digits:
+            continue
+        if email and email in low:
+            continue
+        filtered.append(line)
+    return filtered
 
 
 def extract_structured_resume_rightsourcing_deterministic(resume_text: str) -> dict:
@@ -381,6 +452,8 @@ def extract_structured_resume_rightsourcing_deterministic(resume_text: str) -> d
         "professional_summary": [], "core_qualifications": [], "education": [],
         "licenses": [], "certifications": [], "experience": [],
     })
+
+    remaining_lines = _strip_running_header(lines[first_section_idx:], result)
 
     section = None
     section_lines = []
@@ -402,7 +475,7 @@ def extract_structured_resume_rightsourcing_deterministic(resume_text: str) -> d
         elif sec == "experience":
             result["experience"] = _parse_experience(sec_lines)
 
-    for line in lines[first_section_idx:]:
+    for line in remaining_lines:
         key = _section_key(line)
         if key:
             flush(section, section_lines)

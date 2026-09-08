@@ -1,4 +1,5 @@
 import gc
+import logging
 import numpy as np
 import PyPDF2
 import docx
@@ -7,6 +8,13 @@ from pathlib import Path
 from rapidocr_onnxruntime import RapidOCR
 
 _IMAGE_MEDIA_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
+
+# Two rounds of CPU/memory optimization didn't move Render's free-tier request
+# failure point at all (~200-210s both times), pointing to a fixed platform
+# timeout rather than something code efficiency can fix. At ~50s/page observed
+# there, 3 pages leaves a real margin under that ceiling; a longer scan loses
+# whatever's past page 3 rather than crashing and losing the whole document.
+MAX_OCR_PAGES = 3
 
 _ocr_engine = None
 
@@ -44,7 +52,12 @@ def extract_text_from_scanned_pdf(file_path: str) -> str:
     ocr = _get_ocr_engine()
     pages_text = []
     with fitz.open(file_path) as doc:
-        for page in doc:
+        if doc.page_count > MAX_OCR_PAGES:
+            logging.warning(
+                f"OCR: {file_path} has {doc.page_count} pages, only scanning the "
+                f"first {MAX_OCR_PAGES} to stay under the host's request timeout."
+            )
+        for page in doc[:MAX_OCR_PAGES]:
             pix = page.get_pixmap(dpi=100)
             arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
             result, _ = ocr(arr)

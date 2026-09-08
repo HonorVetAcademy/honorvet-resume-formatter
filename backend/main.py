@@ -9,17 +9,15 @@ import uuid
 load_dotenv()
 
 from services.resume_parser import extract_resume_text
-from services.resume_formatter_service import research_all_facilities
 from services.rightsourcing_service import (
     extract_structured_resume_rightsourcing,
-    build_formatted_resume_rightsourcing,
     run_checklist,
 )
 from services.rightsourcing_docx_generator import generate_rightsourcing_docx
 
 app = FastAPI(
     title="HonorVet Resume Formatter API",
-    description="Reformat any resume into HonorVet standard formatting, with AI-researched facility type, bed size, and EMR system.",
+    description="Reformat any resume into HonorVet standard formatting, transcribing only what the candidate's resume states.",
     version="1.0.0",
 )
 
@@ -43,9 +41,9 @@ def health():
 
 @app.post("/api/rightsourcing/format")
 async def format_resume_rightsourcing(resume: UploadFile = File(...)):
-    """Parse a raw resume into the HonorVet standard submission format, run the
-    pre-submission checklist against it, research each employer's facility profile, and produce
-    the formatted resume."""
+    """Transcribe a raw resume into the HonorVet standard submission format and run the
+    pre-submission checklist against it. Only information explicitly stated in the raw
+    resume is included — missing fields are marked "Not Listed", nothing is inferred or researched."""
     os.makedirs(INBOX_DIR, exist_ok=True)
     safe_name = f"{uuid.uuid4().hex}_{resume.filename.replace(' ', '_')}"
     file_path = os.path.join(INBOX_DIR, safe_name)
@@ -65,18 +63,15 @@ async def format_resume_rightsourcing(resume: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to parse resume content: {e}")
 
-    facility_research = research_all_facilities(structured.get("experience", []))
-    formatted = build_formatted_resume_rightsourcing(structured, facility_research)
-
-    checklist = run_checklist(resume_text, formatted)
+    checklist = run_checklist(resume_text, structured)
 
     try:
-        docx_path = generate_rightsourcing_docx(formatted, OUTPUT_DIR)
+        docx_path = generate_rightsourcing_docx(structured, OUTPUT_DIR)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate formatted document: {e}")
 
     return {
-        "resume": formatted,
+        "resume": structured,
         "checklist": checklist,
         "download_filename": os.path.basename(docx_path),
     }

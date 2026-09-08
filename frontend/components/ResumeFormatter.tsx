@@ -8,16 +8,9 @@ import { UploadIcon, DownloadIcon, FileTextIcon, SearchIcon, CheckCircleIcon, Al
 const STAGES = [
   { key: 'upload', label: 'Uploading resume' },
   { key: 'parse', label: 'Extracting resume content' },
-  { key: 'research', label: 'Researching facilities (Facility Type, Trauma Level, EMR)' },
   { key: 'checklist', label: 'Running submission checklist' },
   { key: 'format', label: 'Building formatted document' },
 ]
-
-const confidenceColor: Record<string, string> = {
-  high: 'bg-green-100 text-green-800',
-  medium: 'bg-yellow-100 text-yellow-800',
-  low: 'bg-red-100 text-red-800',
-}
 
 const statusOrder: Record<string, number> = { fail: 0, warning: 1, info: 2, pass: 3 }
 
@@ -68,16 +61,15 @@ export default function ResumeFormatter() {
     setError(null)
     setResult(null)
     setStageIndex(1)
-    const t1 = setTimeout(() => setStageIndex(2), 1500)
-    const t2 = setTimeout(() => setStageIndex(3), 6000)
-    const t3 = setTimeout(() => setStageIndex(4), 9000)
+    const t1 = setTimeout(() => setStageIndex(2), 2000)
+    const t2 = setTimeout(() => setStageIndex(3), 5000)
     try {
       const res = await api.formatRightSourcing(file)
       setResult(res)
     } catch (e: any) {
       setError(e.message || 'Failed to format resume')
     } finally {
-      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3)
+      clearTimeout(t1); clearTimeout(t2)
       setProcessing(false)
       setStageIndex(0)
     }
@@ -184,37 +176,21 @@ export default function ResumeFormatter() {
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <h2 className="font-bold text-gray-900 mb-3">Facility research — verify before sending</h2>
+            <h2 className="font-bold text-gray-900 mb-3">Professional experience</h2>
+            <p className="text-xs text-gray-500 mb-4">
+              Transcribed directly from the raw resume — nothing here was inferred or researched. Fields the resume didn't state are marked "Not Listed".
+            </p>
             <div className="space-y-4">
               {result.resume.experience.map((job, i) => (
                 <div key={i} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="font-semibold text-gray-900 text-sm">{job.facility_name}{job.city ? `, ${job.city}, ${job.state}` : ''}</p>
-                    {job.research_confidence && (
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${confidenceColor[job.research_confidence] || 'bg-gray-100 text-gray-700'}`}>
-                        {job.research_confidence} confidence
-                      </span>
-                    )}
+                  <p className="font-semibold text-gray-900 text-sm mb-2">{job.facility_name}{job.city ? `, ${job.city}, ${job.state}` : ''}</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
+                    <div><span className="text-gray-400">EMR: </span>{job.emr}</div>
+                    <div><span className="text-gray-400">Position Type: </span>{job.position_type}</div>
+                    <div><span className="text-gray-400">Agency Name: </span>{job.agency_name}</div>
+                    <div><span className="text-gray-400">Trauma Level: </span>{job.trauma_level}</div>
+                    <div><span className="text-gray-400">Facility Type: </span>{job.facility_type}</div>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
-                    <div><span className="text-gray-400">Facility Type: </span>{job.facility_type || <span className="text-gray-400 italic">unknown</span>}</div>
-                    <div><span className="text-gray-400">Trauma: </span>{job.trauma_level || <span className="text-gray-400 italic">unknown</span>}</div>
-                    <div><span className="text-gray-400">Bed Size: </span>{job.bed_size ?? <span className="text-gray-400 italic">unknown</span>}</div>
-                    <div><span className="text-gray-400">EMR: </span>{job.emr_system || <span className="text-gray-400 italic">unknown</span>}
-                      {job.emr_mentioned && !job.emr_matches_resume && (
-                        <span className="text-yellow-700"> (resume says "{job.emr_mentioned}")</span>
-                      )}
-                    </div>
-                  </div>
-                  {job.research_sources && job.research_sources.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {job.research_sources.map((src, si) => (
-                        <a key={si} href={src} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline truncate max-w-[220px]">
-                          {src}
-                        </a>
-                      ))}
-                    </div>
-                  )}
                 </div>
               ))}
             </div>

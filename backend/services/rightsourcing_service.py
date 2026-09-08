@@ -4,37 +4,43 @@ import os
 import re
 from datetime import datetime
 
-from services.resume_formatter_service import research_all_facilities, _parse_json_response
+from services.resume_formatter_service import _parse_json_response
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 MODEL = "claude-sonnet-4-6"
 
 
+NOT_LISTED = "Not Listed"
+
+_EXPERIENCE_DEFAULTS = ("emr", "position_type", "agency_name", "trauma_level", "facility_type")
+
+
 def extract_structured_resume_rightsourcing(resume_text: str) -> dict:
-    """Parse raw resume text into the HonorVet standard submission structure."""
-    prompt = f"""You are formatting a resume for submission to a healthcare staffing client. Parse the resume below into structured JSON.
+    """Parse raw resume text into the HonorVet standard submission structure.
 
-Do not invent, embellish, or fabricate any facts not present in the source resume — every duty you write must be traceable to something the candidate actually wrote.
+    Strict, non-inferring transcription only — no facts, research, or rewriting beyond
+    what the candidate's own resume states. See rightsourcing formatting rules."""
+    prompt = f"""You are transcribing a resume into a standardized structure for submission to a healthcare staffing client. Follow every rule below exactly.
 
-MANDATORY REWRITE STEP for "duties": many resumes list duties as a dense run of short comma-separated fragments, one clinical task after another. You MUST NOT copy those fragments through as one array item each. You must rewrite them into a HARD MAXIMUM of 8 full-sentence bullets per job, each combining several related fragments into a real sentence. This is a required transformation, not optional cleanup.
+RULES:
+1. Do not add, assume, infer, fabricate, or rewrite any information that is not present in the raw resume.
+2. Use only the information provided in the raw resume.
+3. Preserve all employment dates exactly as provided, but format each as "Mon YYYY" (e.g. "Jan 2025") or "Present" so the duration can be rendered consistently as "Month Year – Month Year".
+4. Maintain the same capitalization, spacing, punctuation, and overall wording shown in the raw resume wherever you transcribe text from it.
+5. Do not omit any information from the raw resume — every job, bullet, credential, and detail must appear somewhere in the output.
+6. If a required field is not provided in the raw resume, use the exact string "Not Listed".
+7. Do not infer an EMR from a general skills section. Only report an EMR for a job if the raw resume explicitly associates that EMR with that specific facility/job.
+8. Do not infer an agency name from the fact that a position is labeled "Travel". If the agency is not explicitly named, use "Not Listed".
+9. Do not infer Trauma Level or Facility Type from the facility's name or reputation. If not explicitly stated in the resume, use "Not Listed".
+10. Do not add phone number, email, license information, certification expiration dates, facility details, patient ratios, agency names, EMRs, trauma levels, facility types, or any other detail unless it is explicitly present in the raw resume.
+11. Keep the candidate's original job titles and employment descriptions as close to the raw resume's wording as possible.
+12. Do not create new bullet points, combine/rewrite duty fragments into new sentences, or add achievements that are not in the raw resume — transcribe each duty/bullet as the candidate wrote it, only cleaning up obvious spacing.
+13. Do not change the meaning of any information.
+14. Preserve certifications and licenses exactly as listed, only cleaning up minor spacing.
 
-Worked example — INPUT fragment from a resume:
-"Emergency Department, Trauma 1 experience, Works with 3 to 4 patients, Care for critical patients, Sedation, Titrated drips, Ventilated patients, Ultrasound guided IV, Float between pods, Transport of critical patients, Care handoffs to receiving units, Belmont, Arterial line set up and use, Preceptor to new graduates, Triaging EMS patients, Critical care for trauma I & II patients, Phlebotomy, Endo Tool, RSI, MTP, Life Flow"
-
-The CORRECT "duties" array for that input looks like this (5 bullets, not 20):
-[
-  "Provided emergency department care with Trauma 1 experience, managing 3 to 4 critical patients at a time.",
-  "Managed sedation, titrated drips, and ventilated patients, including arterial line setup and Ultrasound-guided IV insertion.",
-  "Performed RSI and assisted with MTP using the Belmont rapid infuser; utilized the Endo Tool and Life Flow as needed.",
-  "Floated between pods, triaged EMS patients, transported critical patients, and handed off care to receiving units.",
-  "Precepted new graduate nurses and performed phlebotomy and critical care for Trauma I & II patients."
-]
-
-An INCORRECT output would repeat the 20 fragments as 20 separate one-line bullets — do not do that, even though it may look like "preserving the candidate's wording." Combining fragments into full sentences IS preserving their meaning; it is the required format, not embellishment.
-
-The "skills" list (separate from duties) is still fine as a flat list of short skill terms — this rewrite requirement is specifically about the per-job "duties" arrays.
-
-BOLD HIGHLIGHTING in "professional_summary": wrap the single most standout, recruiter-relevant phrase in each summary bullet with **double asterisks** — e.g. years of experience ("**1.5 years of clinical experience**"), a specialty/trauma level ("**Level I Trauma Center**"), or a notable credential/award ("**six-time Daisy Award nominee**"). Bold at most one short phrase per bullet (a few words, never the whole sentence), and only wrap something that is genuinely a standout qualifier — do not bold everything. Do not use bold markers anywhere else (not in duties, skills, or any other field).
+Classify each licensure/certification entry into exactly one of two buckets:
+- "licenses": state RN (or other professional practice) licenses — typically has a license number.
+- "certifications": things like ACLS, BLS, PALS, NIHSS, CNOR, etc. — typically no license number.
 
 RESUME TEXT:
 {resume_text}
@@ -43,24 +49,29 @@ Return a JSON object with this exact schema:
 {{
   "full_name": "<candidate's name in Firstname Lastname capitalization, no credentials>",
   "credentials_suffix": "<credentials after name if stated, e.g. 'BSN, RN, CNOR', else empty string>",
-  "phone": "<phone number>",
-  "email": "<email>",
-  "permanent_address": "<full street address, city, state, zip if stated in the resume — else empty string>",
-  "professional_summary": ["<bullet 1>", "<bullet 2>", ...],
-  "skills": ["<skill 1>", "<skill 2>", ...],
-  "education": [{{"degree": "<degree>", "school": "<school name>", "location": "<city, state>", "date": "<Month, Year format>"}}],
-  "certifications": [{{"name": "<certification name/abbreviation>", "issuer": "<issuing body>", "id": "<license/id number if stated, else empty>", "expires": "<expiration date if stated, else empty>"}}],
+  "professional_headline": "<a professional headline/title tagline ONLY if the resume states one, else empty string>",
+  "phone": "<phone number, else empty string>",
+  "email": "<email, else empty string>",
+  "permanent_address": "<full street address / city, state as stated in the resume, else empty string>",
+  "professional_summary": ["<bullet 1 transcribed from the resume's own summary>", ...],
+  "core_qualifications": ["<skill/qualification 1, transcribed as listed>", ...],
+  "education": [{{"degree": "<degree>", "school": "<school name>", "location": "<city, state>", "date": "<date as stated>"}}],
+  "licenses": [{{"name": "<license name, e.g. 'RN Compact License (Georgia)'>", "id": "<license number if stated, else empty string>", "expires": "<expiration date if stated, else empty string>"}}],
+  "certifications": [{{"name": "<certification name, e.g. 'ACLS (Advanced Cardiac Life Support)'>", "id": "<id if stated, else empty string>", "expires": "<expiration date if stated, else empty string>"}}],
   "experience": [
     {{
       "facility_name": "<employer/facility name as written>",
-      "city": "<city>",
-      "state": "<state>",
+      "city": "<city, else empty string>",
+      "state": "<state, else empty string>",
       "start_date": "<start date, e.g. 'Jan 2025'>",
       "end_date": "<end date or 'Present'>",
-      "job_title": "<job title>",
-      "patient_ratio": "<patient ratio ONLY if explicitly stated in the resume, else empty string>",
-      "emr_mentioned": "<EMR/charting system explicitly mentioned for this job in the resume, else empty string>",
-      "duties": ["<duty bullet 1>", "<duty bullet 2>", ...]
+      "job_title": "<exact job title as stated>",
+      "emr": "<EMR explicitly tied to THIS facility in the resume, else 'Not Listed'>",
+      "position_type": "<Staff/PRN/Travel/Contract/etc. ONLY if explicitly stated, else 'Not Listed'>",
+      "agency_name": "<staffing agency name ONLY if explicitly stated, else 'Not Listed'>",
+      "trauma_level": "<ONLY if explicitly stated in the resume, else 'Not Listed'>",
+      "facility_type": "<ONLY if explicitly stated in the resume, else 'Not Listed'>",
+      "duties": ["<duty/bullet exactly as the candidate wrote it, minor spacing cleanup only>", ...]
     }}
   ]
 }}
@@ -72,27 +83,18 @@ List experience most-recent-first. Return only valid JSON, no commentary."""
         max_tokens=4000,
         messages=[{"role": "user", "content": prompt}]
     )
-    return _parse_json_response(message.content[0].text)
+    structured = _parse_json_response(message.content[0].text)
 
-
-def build_formatted_resume_rightsourcing(structured: dict, facility_research: dict) -> dict:
-    """Merge parsed resume with facility research and add client-submission fields."""
     experience = []
     for entry in structured.get("experience", []):
-        research = facility_research.get(entry.get("facility_name", "").strip(), {})
-        emr = entry.get("emr_mentioned") or research.get("emr_system")
-        experience.append({
-            **entry,
-            "facility_type": research.get("type_of_facility"),
-            "trauma_level": research.get("trauma_level"),
-            "bed_size": research.get("bed_size"),
-            "emr_system": emr,
-            "emr_matches_resume": bool(entry.get("emr_mentioned")) and entry.get("emr_mentioned") == research.get("emr_system"),
-            "research_confidence": research.get("confidence", "low"),
-            "research_sources": research.get("sources", []),
-        })
+        entry = dict(entry)
+        for field in _EXPERIENCE_DEFAULTS:
+            if not entry.get(field):
+                entry[field] = NOT_LISTED
+        experience.append(entry)
+    structured["experience"] = experience
 
-    return {**structured, "experience": experience}
+    return structured
 
 
 _MONTH_RE = re.compile(
@@ -139,8 +141,8 @@ def _deterministic_checks(resume: dict) -> list:
         "detail": "" if has_contact else "Missing phone and/or email",
     })
 
-    # Certifications not expired
-    for cert in resume.get("certifications", []):
+    # Licenses/certifications not expired
+    for cert in resume.get("licenses", []) + resume.get("certifications", []):
         expires = _parse_month_year(cert.get("expires", ""))
         if expires and expires != "present" and expires < today:
             checks.append({
@@ -155,13 +157,11 @@ def _deterministic_checks(resume: dict) -> list:
         ("facility_name", "Facility name"), ("city", "City"), ("state", "State"),
         ("start_date", "Start date"), ("end_date", "End date"), ("job_title", "Job title"),
     ]
-    research_fields = [("trauma_level", "Trauma Level"), ("facility_type", "Facility Type"), ("emr_system", "EMR")]
 
     experience = resume.get("experience", [])
     for job in experience:
         label = job.get("facility_name") or "Unnamed facility"
         missing = [name for key, name in required_fields if not job.get(key)]
-        missing += [name for key, name in research_fields if not job.get(key)]
         checks.append({
             "id": f"job_fields_{label}",
             "label": f"All required fields present: {label}",

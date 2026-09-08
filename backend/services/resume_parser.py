@@ -1,3 +1,4 @@
+import gc
 import PyPDF2
 import docx
 import pymupdf as fitz
@@ -31,15 +32,23 @@ def extract_text_from_pdf(file_path: str) -> str:
 def extract_text_from_scanned_pdf(file_path: str) -> str:
     """OCR fallback for PDFs with no embedded text layer (scanned/photographed pages).
     Fully local and offline — PyMuPDF rasterizes each page, RapidOCR (CPU-only ONNX
-    models) reads the text. No external API calls."""
+    models) reads the text. No external API calls.
+
+    Renders at a deliberately modest 100 DPI and frees each page's image before
+    moving to the next — this runs on a memory-constrained (512MB) host, and a
+    multi-page scan at a higher DPI was enough to OOM-crash the whole process."""
     ocr = _get_ocr_engine()
-    doc = fitz.open(file_path)
     pages_text = []
-    for page in doc:
-        pix = page.get_pixmap(dpi=200)
-        result, _ = ocr(pix.tobytes("png"))
-        if result:
-            pages_text.append("\n".join(line[1] for line in result))
+    with fitz.open(file_path) as doc:
+        for page in doc:
+            pix = page.get_pixmap(dpi=100)
+            img_bytes = pix.tobytes("png")
+            pix = None
+            result, _ = ocr(img_bytes)
+            img_bytes = None
+            if result:
+                pages_text.append("\n".join(line[1] for line in result))
+            gc.collect()
     return "\n".join(pages_text).strip()
 
 

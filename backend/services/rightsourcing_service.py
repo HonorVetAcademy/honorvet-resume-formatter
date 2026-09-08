@@ -43,7 +43,16 @@ def extract_structured_resume_rightsourcing(resume_text: str) -> dict:
     sheet, clearance form, or certificate scan in the same file."""
     structured = extract_structured_resume_rightsourcing_deterministic(resume_text)
 
-    if not structured.get("experience") and not structured.get("phone") and not structured.get("email"):
+    no_resume_signal = not structured.get("experience") and not structured.get("phone") and not structured.get("email")
+    # With no section header to mark where "Professional Experience" ends, a bundled
+    # upload (resume + certificate scans, verification reports, etc.) runs the parser
+    # straight into that trailing content — it lands as an implausible pile of duties/
+    # labels on the last job, which is a reliable sign this wasn't just the resume.
+    runaway_job = any(
+        len(job.get("duties", [])) > 15 or len(job.get("additional_details", [])) > 15
+        for job in structured.get("experience", [])
+    )
+    if no_resume_signal or runaway_job:
         raise ValueError(
             "Couldn't find resume content in this file. Upload just the resume itself — "
             "not a packet bundling a cover sheet, clearance form, or certificate scans."

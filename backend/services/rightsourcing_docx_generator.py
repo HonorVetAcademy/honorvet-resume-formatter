@@ -16,12 +16,16 @@ def _line_or_placeholder(doc, label: str, value):
     _plain_line(doc, label, value if value else NOT_LISTED)
 
 
-def _license_line(doc, entry: dict):
+def _license_line(doc, entry: dict, has_license_number: bool):
+    """Licenses carry a license number; certifications (BLS, ACLS, etc.) structurally
+    never do, so that field is only shown for licenses — never as a placeholder."""
     p = doc.add_paragraph()
     p.paragraph_format.space_after = Pt(2)
     run = p.add_run(entry.get("name", ""))
     run.font.size = Pt(10.5)
-    r2 = p.add_run(f" | License Number: {entry.get('id') or NOT_LISTED} | Expiry: {entry.get('expires') or NOT_LISTED}")
+    tail = f" | License Number: {entry.get('id') or NOT_LISTED} | Expiry: {entry.get('expires') or NOT_LISTED}" \
+        if has_license_number else f" | Expiry: {entry.get('expires') or NOT_LISTED}"
+    r2 = p.add_run(tail)
     r2.bold = True
     r2.font.size = Pt(10.5)
 
@@ -88,9 +92,9 @@ def generate_rightsourcing_docx(resume: dict, output_dir: str) -> str:
     if resume.get("licenses") or resume.get("certifications"):
         _section_header(doc, "Licensure & Certifications")
         for lic in resume.get("licenses", []):
-            _license_line(doc, lic)
+            _license_line(doc, lic, has_license_number=True)
         for cert in resume.get("certifications", []):
-            _license_line(doc, cert)
+            _license_line(doc, cert, has_license_number=False)
 
     # Professional Experience
     if resume.get("experience"):

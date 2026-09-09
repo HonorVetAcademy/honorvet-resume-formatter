@@ -16,6 +16,15 @@ def _line_or_placeholder(doc, label: str, value):
     _plain_line(doc, label, value if value else NOT_LISTED)
 
 
+def _std_section_header(doc, text: str):
+    """Section header with a full blank-line gap on both sides, matching the
+    reference format's consistent breathing room around every heading."""
+    p = _section_header(doc, text)
+    p.paragraph_format.space_before = Pt(12)
+    p.paragraph_format.space_after = Pt(12)
+    return p
+
+
 def _license_line(doc, entry: dict, has_license_number: bool):
     """Licenses carry a license number; certifications (BLS, ACLS, etc.) structurally
     never do, so that field is only shown for licenses — never as a placeholder."""
@@ -59,9 +68,10 @@ def generate_rightsourcing_docx(resume: dict, output_dir: str) -> str:
         name_line += f", {resume['credentials_suffix']}"
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.space_after = Pt(12)
     run = p.add_run(name_line)
     run.bold = True
-    run.font.size = Pt(15)
+    run.font.size = Pt(10.5)
 
     for bit in [resume.get("phone"), resume.get("email"), resume.get("permanent_address")]:
         if not bit:
@@ -74,13 +84,13 @@ def generate_rightsourcing_docx(resume: dict, output_dir: str) -> str:
 
     # Professional Summary
     if resume.get("professional_summary"):
-        _section_header(doc, "Professional Summary:")
+        _std_section_header(doc, "Professional Summary:")
         for bullet in resume["professional_summary"]:
             _bullet(doc, bullet)
 
     # Education
     if resume.get("education"):
-        _section_header(doc, "Education:")
+        _std_section_header(doc, "Education:")
         for edu in resume["education"]:
             p = doc.add_paragraph()
             p.paragraph_format.space_after = Pt(2)
@@ -102,7 +112,7 @@ def generate_rightsourcing_docx(resume: dict, output_dir: str) -> str:
 
     # Licensure & Certifications
     if resume.get("licenses") or resume.get("certifications"):
-        _section_header(doc, "Licensure & Certifications:")
+        _std_section_header(doc, "Licensure & Certifications:")
         for lic in resume.get("licenses", []):
             _license_line(doc, lic, has_license_number=True)
         for cert in resume.get("certifications", []):
@@ -110,10 +120,14 @@ def generate_rightsourcing_docx(resume: dict, output_dir: str) -> str:
 
     # Professional Experience
     if resume.get("experience"):
-        _section_header(doc, "Professional Experience:")
-        for job in resume["experience"]:
+        _std_section_header(doc, "Professional Experience:")
+        for job_index, job in enumerate(resume["experience"]):
             p = doc.add_paragraph()
-            p.paragraph_format.space_before = Pt(8)
+            # The heading's own space_after already opens the gap before the first
+            # job; adding space_before here too would double it up (Word sums
+            # adjacent paragraphs' space_after + space_before, it doesn't take the max).
+            if job_index > 0:
+                p.paragraph_format.space_before = Pt(12)
             p.paragraph_format.space_after = Pt(0)
             loc = ", ".join(x for x in [job.get("city", ""), job.get("state", "")] if x)
             facility_line = job.get("facility_name", "")

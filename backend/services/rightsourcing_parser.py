@@ -4,8 +4,13 @@ NOT_LISTED = "[TO BE CONFIRMED]"
 
 BULLET_RE = re.compile(r"^[•\-*▪]\s*")
 PHONE_RE = re.compile(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
-EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+# Tolerates a stray space before "@" — a common PDF-extraction artifact from
+# justified/spaced-out header text (e.g. "name1008 @gmail.com").
+EMAIL_RE = re.compile(r"[\w.+-]+\s?@\s?[\w-]+\.[\w.-]+")
 ADDRESS_RE = re.compile(r"[A-Za-z .]+,\s*[A-Z]{2}(\s+\d{5})?\s*$")
+# Header contact fields are commonly pipe-separated, but not always with the
+# ASCII "|" — box-drawing/broken-bar Unicode variants show up too.
+_HEADER_SEP_RE = re.compile(r"[|│¦]")
 
 SECTION_ALIASES = {
     "professional summary": "summary",
@@ -29,6 +34,11 @@ SECTION_ALIASES = {
     "experience": "experience",
     "work experience": "experience",
     "employment history": "experience",
+    "relevant work experience": "experience",
+    "other work experience": "experience",
+    "relevant experience": "experience",
+    "additional work experience": "experience",
+    "prior work experience": "experience",
     # Recognized so their content doesn't bleed into a real section, but the
     # standard output template has no slot for them — content here is dropped.
     "honors & awards": "ignored",
@@ -48,6 +58,8 @@ SECTION_ALIASES = {
     "qualifications": "ignored",
     "skills": "ignored",
     "key skills": "ignored",
+    "clinical rotations": "ignored",
+    "clinical rotation": "ignored",
 }
 _SQUASHED_ALIASES = {re.sub(r"[^a-z0-9]", "", k): v for k, v in SECTION_ALIASES.items()}
 
@@ -119,14 +131,14 @@ def _parse_header(lines):
         header["full_name"] = name_line
 
     for line in lines[1:]:
-        for segment in line.split("|"):
+        for segment in _HEADER_SEP_RE.split(line):
             segment = _clean(segment)
             if not segment:
                 continue
             email_match = EMAIL_RE.search(segment)
             phone_match = PHONE_RE.search(segment)
             if email_match:
-                header["email"] = header["email"] or email_match.group(0)
+                header["email"] = header["email"] or email_match.group(0).replace(" ", "")
             elif phone_match:
                 header["phone"] = header["phone"] or phone_match.group(0)
             elif ADDRESS_RE.search(segment):
@@ -467,7 +479,11 @@ def extract_structured_resume_rightsourcing_deterministic(resume_text: str) -> d
         elif sec == "certifications_only":
             certifications_only_lines.extend(sec_lines)
         elif sec == "experience":
-            result["experience"] = _parse_experience(sec_lines)
+            # A resume can split employment history across more than one
+            # section header (e.g. "Relevant Work Experience" + "Other Work
+            # Experience") — accumulate rather than let the second one
+            # silently overwrite the first.
+            result["experience"].extend(_parse_experience(sec_lines))
 
     for line in remaining_lines:
         key = _section_key(line)

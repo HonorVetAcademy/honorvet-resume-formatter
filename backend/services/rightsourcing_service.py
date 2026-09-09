@@ -46,8 +46,11 @@ def extract_structured_resume_rightsourcing(resume_text: str) -> dict:
     # upload (resume + certificate scans, verification reports, etc.) runs the parser
     # straight into that trailing content — it lands as an implausible pile of duties/
     # labels on the last job, which is a reliable sign this wasn't just the resume.
+    # Real resumes can legitimately list 20+ short duty fragments for one job (seen
+    # in practice), so this threshold sits well above that — bundled-packet pollution
+    # runs to 50-100+ lines, not right at the edge of a real one.
     runaway_job = any(
-        len(job.get("duties", [])) > 15 or len(job.get("additional_details", [])) > 15
+        len(job.get("duties", [])) > 35 or len(job.get("additional_details", [])) > 15
         for job in structured.get("experience", [])
     )
     if no_resume_signal or runaway_job:

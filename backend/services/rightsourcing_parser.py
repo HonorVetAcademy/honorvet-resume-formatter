@@ -75,15 +75,33 @@ LABEL_ALIASES = {
     "patient ratio": "patient_ratio",
 }
 
+# An actual month-name alternation, not a generic 3-9 letter character class —
+# the latter also matches things like "...etologist 2010" (the tail of
+# "Cosmetologist" is coincidentally 9 letters) as if it were a month name.
+_MONTH_NAMES = (
+    r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?"
+    r"|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+)
 DATE_RANGE_RE = re.compile(
-    r"(?P<start>[A-Za-z]{3,9}\.?,?\s*\d{4}|Present|Current)\s*[–—-]\s*(?P<end>[A-Za-z]{3,9}\.?,?\s*\d{4}|Present|Current)",
+    rf"(?P<start>{_MONTH_NAMES}\.?,?\s*\d{{4}}|Present|Current)\s*(?:[–—-]|\bto\b)\s*(?P<end>{_MONTH_NAMES}\.?,?\s*\d{{4}}|Present|Current)",
     re.IGNORECASE,
 )
-_MONTH_YEAR_RE = re.compile(r"^([A-Za-z]{3,9})\.?,?\s*(\d{4})$")
-_SINGLE_DATE_RE = re.compile(r"([A-Za-z]{3,9}\.?,?\s*\d{4})\s*$", re.IGNORECASE)
+_MONTH_YEAR_RE = re.compile(rf"^({_MONTH_NAMES})\.?,?\s*(\d{{4}})$", re.IGNORECASE)
+_SINGLE_DATE_RE = re.compile(rf"({_MONTH_NAMES}\.?,?\s*\d{{4}})\s*$", re.IGNORECASE)
 _BARE_YEAR_RE = re.compile(r"^\d{4}$")
+# A bare year with no month at all, trailing some other text on the same line
+# (e.g. "Licensed Cosmetologist 2010") — only used as a fallback in education
+# parsing, after month-based date patterns have already had a chance to match.
+_TRAILING_BARE_YEAR_RE = re.compile(r"\s(\d{4})\s*$")
 FACILITY_TAIL_RE = re.compile(
     r"^(?P<name>.+)\s+[–—-]\s+(?P<city>[A-Za-z][A-Za-z .'&]*),\s*(?P<state>[A-Z]{2})$"
+)
+# Like FACILITY_TAIL_RE's comma form, but tolerates trailing text after the
+# state code (e.g. "ECPI University, Charlotte, NC ADN Program") instead of
+# requiring the state to end the line — some resumes tack a program/track
+# name on after the location with no delimiter.
+_SCHOOL_TAIL_LOOSE_RE = re.compile(
+    r"^(?P<name>.+?),\s*(?P<city>[A-Za-z][A-Za-z .'&]*),\s*(?P<state>[A-Z]{2})\b\s*(?P<rest>.*)$"
 )
 LABEL_LINE_RE = re.compile(r"^([A-Za-z][A-Za-z /&]{1,40}):\s*(.+)$")
 ID_RE = re.compile(r"#\s*([A-Za-z0-9\-]+)")
@@ -164,11 +182,30 @@ def _parse_bulleted_list(lines):
     return items
 
 
+def _split_school_location(text: str):
+    """Like _split_facility_city_state, but also tolerates trailing text after
+    the state code (e.g. "ECPI University, Charlotte, NC ADN Program") instead
+    of requiring the state to end the line — some resumes tack a program/track
+    name on after the location with no delimiter. Returns a 4th "extra" value
+    (that trailing text, or "") so the caller can decide where it belongs."""
+    school, city, state = _split_facility_city_state(text)
+    if city and state:
+        return school, city, state, ""
+
+    loose = _SCHOOL_TAIL_LOOSE_RE.match(text)
+    if loose:
+        return _clean(loose.group("name")), _clean(loose.group("city")), loose.group("state"), _clean(loose.group("rest"))
+
+    return text, "", "", ""
+
+
 def _parse_education(lines):
-    """Handles two conventions: a single "Degree – School, City, ST | Date" line,
-    or a degree line and a school/location line as two separate lines (in either
-    order, since some resumes put the date next to the degree and others next
-    to the school)."""
+    """Handles a single "Degree – School, City, ST | Date" line, or a degree
+    line and a school/location line as two separate lines (in either order,
+    since some resumes put the date next to the degree and others next to the
+    school) — and the case where one program has no separate degree line at
+    all, just a school/location line with the program name tacked on after
+    the state and a date of its own."""
     entries = []
     pending_degree, pending_date = None, ""
 
@@ -197,24 +234,47 @@ def _parse_education(lines):
             parts = re.split(r"\s{2,}|\s+–\s+", rest, maxsplit=1)
             degree = _clean(parts[0]) if parts else rest
             tail = _clean(parts[1]) if len(parts) > 1 else ""
-            school, city, state = _split_facility_city_state(tail)
+            school, city, state, extra = _split_school_location(tail)
             location = f"{city}, {state}" if city and state else ""
+            if extra:
+                degree = f"{degree} – {extra}" if degree else extra
             entries.append({"degree": degree, "school": school if location else tail, "location": location, "date": date})
             continue
 
-        date_match = _SINGLE_DATE_RE.search(line)
-        remainder = _clean(line[:date_match.start()]) if date_match else line
-        school, city, state = _split_facility_city_state(remainder)
+        date_value, remainder, date_found = "", line, False
+        range_match = DATE_RANGE_RE.search(line)
+        if range_match:
+            date_value = _normalize_date(range_match.group("end"))
+            remainder = _clean(line[:range_match.start()] + " " + line[range_match.end():]).strip(" |,-–—")
+            date_found = True
+        else:
+            single_match = _SINGLE_DATE_RE.search(line)
+            if single_match:
+                date_value = _normalize_date(single_match.group(1))
+                remainder = _clean(line[:single_match.start()])
+                date_found = True
+            else:
+                bare_match = _TRAILING_BARE_YEAR_RE.search(line)
+                if bare_match:
+                    date_value = bare_match.group(1)
+                    remainder = _clean(line[:bare_match.start()])
+                    date_found = True
+
+        school, city, state, extra = _split_school_location(remainder)
 
         if city and state:
+            if pending_degree and extra:
+                degree = f"{pending_degree} – {extra}"
+            else:
+                degree = pending_degree or extra
             entries.append({
-                "degree": pending_degree or "", "school": school, "location": f"{city}, {state}",
-                "date": _normalize_date(date_match.group(1)) if date_match else pending_date,
+                "degree": degree, "school": school, "location": f"{city}, {state}",
+                "date": date_value if date_found else pending_date,
             })
             pending_degree, pending_date = None, ""
-        elif date_match:
+        elif date_found:
             flush_pending()
-            pending_degree, pending_date = remainder, _normalize_date(date_match.group(1))
+            pending_degree, pending_date = remainder, date_value
         else:
             flush_pending()
             pending_degree = remainder

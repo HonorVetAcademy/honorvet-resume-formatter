@@ -177,7 +177,7 @@ export default function ResumeFormatter() {
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="font-bold text-gray-900 mb-3">Professional experience</h2>
             <p className="text-xs text-gray-500 mb-4">
-              Transcribed directly from the raw resume — nothing here was inferred or researched. Fields the resume didn't state are marked "Not Listed".
+              Transcribed directly from the raw resume — nothing here was inferred or researched. Fields the resume didn't state are marked "[TO BE CONFIRMED]".
             </p>
             <div className="space-y-4">
               {result.resume.experience.map((job, i) => (
@@ -185,10 +185,10 @@ export default function ResumeFormatter() {
                   <p className="font-semibold text-gray-900 text-sm mb-2">{job.facility_name}{job.city ? `, ${job.city}, ${job.state}` : ''}</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
                     <div><span className="text-gray-400">EMR: </span>{job.emr}</div>
-                    <div><span className="text-gray-400">Position Type: </span>{job.position_type}</div>
-                    <div><span className="text-gray-400">Agency Name: </span>{job.agency_name}</div>
-                    <div><span className="text-gray-400">Trauma Level: </span>{job.trauma_level}</div>
                     <div><span className="text-gray-400">Facility Type: </span>{job.facility_type}</div>
+                    <div><span className="text-gray-400">Trauma Level: </span>{job.trauma_level}</div>
+                    <div><span className="text-gray-400">Bed Size: </span>{job.bed_size}</div>
+                    <div><span className="text-gray-400">Patient Ratio: </span>{job.patient_ratio}</div>
                     {job.additional_details?.map((d, di) => (
                       <div key={di}><span className="text-gray-400">{d.label}: </span>{d.value}</div>
                     ))}

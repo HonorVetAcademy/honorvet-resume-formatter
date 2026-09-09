@@ -3,8 +3,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 export interface RightSourcingExperience {
   facility_name: string; city: string; state: string;
   start_date: string; end_date: string; job_title: string;
-  emr: string; position_type: string; agency_name: string;
-  trauma_level: string; facility_type: string;
+  emr: string; facility_type: string; trauma_level: string;
+  bed_size: string; patient_ratio: string;
   additional_details: { label: string; value: string }[];
   duties: string[];
 }
@@ -13,7 +13,6 @@ export interface RightSourcingResume {
   full_name: string; credentials_suffix?: string; professional_headline?: string;
   phone?: string; email?: string; permanent_address?: string;
   professional_summary: string[];
-  core_qualifications: string[];
   education: { degree: string; school: string; location: string; date: string }[];
   licenses: { name: string; id?: string; expires?: string }[];
   certifications: { name: string; id?: string; expires?: string }[];

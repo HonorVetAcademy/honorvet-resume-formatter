@@ -3,8 +3,6 @@ from datetime import datetime
 
 from services.rightsourcing_parser import extract_structured_resume_rightsourcing_deterministic
 
-NOT_LISTED = "Not Listed"
-
 US_STATES = {
     "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR", "california": "CA",
     "colorado": "CO", "connecticut": "CT", "delaware": "DE", "florida": "FL", "georgia": "GA",
@@ -36,8 +34,8 @@ def extract_structured_resume_rightsourcing(resume_text: str) -> dict:
     """Parse raw resume text into the HonorVet standard submission structure.
 
     Fully deterministic — no AI calls. Only information explicitly present in the
-    resume is captured; anything not stated is marked "Not Listed" rather than
-    inferred or researched. Assumes the upload is the resume itself (in the
+    resume is captured; anything not stated is marked "[TO BE CONFIRMED]" rather
+    than inferred or researched. Assumes the upload is the resume itself (in the
     HonorVet labeled-field convention) and not a multi-document packet — a
     parser with no AI can't tell resume content apart from a bundled cover
     sheet, clearance form, or certificate scan in the same file."""

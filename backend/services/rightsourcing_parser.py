@@ -1,6 +1,6 @@
 import re
 
-NOT_LISTED = "Not Listed"
+NOT_LISTED = "[TO BE CONFIRMED]"
 
 BULLET_RE = re.compile(r"^[•\-*▪]\s*")
 PHONE_RE = re.compile(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
@@ -15,12 +15,6 @@ SECTION_ALIASES = {
     "professional profile": "summary",
     "career summary": "summary",
     "objective": "summary",
-    "leadership & core qualifications": "qualifications",
-    "leadership and core qualifications": "qualifications",
-    "core qualifications": "qualifications",
-    "qualifications": "qualifications",
-    "skills": "qualifications",
-    "key skills": "qualifications",
     "education": "education",
     "licensure & certification": "licenses_certs",
     "licensure & certifications": "licenses_certs",
@@ -48,6 +42,12 @@ SECTION_ALIASES = {
     "volunteer experience": "ignored",
     "publications": "ignored",
     "references": "ignored",
+    "leadership & core qualifications": "ignored",
+    "leadership and core qualifications": "ignored",
+    "core qualifications": "ignored",
+    "qualifications": "ignored",
+    "skills": "ignored",
+    "key skills": "ignored",
 }
 _SQUASHED_ALIASES = {re.sub(r"[^a-z0-9]", "", k): v for k, v in SECTION_ALIASES.items()}
 
@@ -58,11 +58,9 @@ LABEL_ALIASES = {
     "type of facility": "facility_type",
     "trauma level": "trauma_level",
     "trauma designation": "trauma_level",
-    "position type": "position_type",
-    "employment type": "position_type",
-    "agency name": "agency_name",
-    "agency": "agency_name",
-    "staffing agency": "agency_name",
+    "bed size": "bed_size",
+    "associated hospital bed size": "bed_size",
+    "patient ratio": "patient_ratio",
 }
 
 DATE_RANGE_RE = re.compile(
@@ -77,10 +75,6 @@ FACILITY_TAIL_RE = re.compile(
 )
 LABEL_LINE_RE = re.compile(r"^([A-Za-z][A-Za-z /&]{1,40}):\s*(.+)$")
 ID_RE = re.compile(r"#\s*([A-Za-z0-9\-]+)")
-POSITION_TYPE_RE = re.compile(
-    r"\b(Staff|PRN|Per\s*Diem|Travel(?:\s+Contract)?|Contract|Locums?|Agency|Float|Casual|Registry|Part[- ]Time|Full[- ]Time)\b",
-    re.IGNORECASE,
-)
 
 
 def _clean(text: str) -> str:
@@ -156,14 +150,6 @@ def _parse_bulleted_list(lines):
         elif items:
             items[-1] += " " + line
     return items
-
-
-def _parse_qualifications(lines):
-    bulleted = [l for l in lines if l]
-    if any(BULLET_RE.match(l) for l in bulleted):
-        return _parse_bulleted_list(lines)
-    joined = " ".join(bulleted)
-    return [_clean(x) for x in joined.split(",") if _clean(x)]
 
 
 def _parse_education(lines):
@@ -287,8 +273,8 @@ def _new_job():
     return {
         "facility_name": "", "city": "", "state": "",
         "start_date": "", "end_date": "", "job_title": "",
-        "emr": NOT_LISTED, "position_type": NOT_LISTED, "agency_name": NOT_LISTED,
-        "trauma_level": NOT_LISTED, "facility_type": NOT_LISTED,
+        "emr": NOT_LISTED, "facility_type": NOT_LISTED, "trauma_level": NOT_LISTED,
+        "bed_size": NOT_LISTED, "patient_ratio": NOT_LISTED,
         "additional_details": [], "duties": [],
     }
 
@@ -330,11 +316,6 @@ def _looks_like_title(text: str) -> bool:
     if "=" in text or re.search(r"\d+\s*(hours?|weeks?)\b", text, re.IGNORECASE):
         return False
     return True
-
-
-def _extract_position_type(title: str) -> str:
-    match = POSITION_TYPE_RE.search(title)
-    return match.group(1) if match else NOT_LISTED
 
 
 def _is_real_job(job: dict) -> bool:
@@ -405,10 +386,6 @@ def _parse_experience(lines):
     if _is_real_job(current):
         jobs.append(current)
 
-    for job in jobs:
-        if job["position_type"] == NOT_LISTED:
-            job["position_type"] = _extract_position_type(job["job_title"])
-
     return jobs
 
 
@@ -440,6 +417,25 @@ def _strip_running_header(lines, header):
     return filtered
 
 
+_MONTH_NUM = {m: i + 1 for i, m in enumerate(
+    ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+)}
+
+
+def _date_sort_key(date_str: str):
+    """Sort key for reverse-chronological ordering. "Present"/unparseable dates
+    sort first/last respectively via a stable fallback rather than raising."""
+    if not date_str:
+        return (0, 0)
+    if date_str.strip().lower() in ("present", "current"):
+        return (9999, 12)
+    match = _MONTH_YEAR_RE.match(date_str.replace(",", ""))
+    if match:
+        month, year = match.groups()
+        return (int(year), _MONTH_NUM.get(month[:3].capitalize(), 0))
+    return (0, 0)
+
+
 def extract_structured_resume_rightsourcing_deterministic(resume_text: str) -> dict:
     """Parse a resume that already follows the HonorVet labeled-field convention
     (section headers ending in ':', per-job 'Label: Value' lines, bulleted lists)
@@ -449,7 +445,7 @@ def extract_structured_resume_rightsourcing_deterministic(resume_text: str) -> d
     first_section_idx = next((i for i, l in enumerate(lines) if _section_key(l)), len(lines))
     result = _parse_header(lines[:first_section_idx])
     result.update({
-        "professional_summary": [], "core_qualifications": [], "education": [],
+        "professional_summary": [], "education": [],
         "licenses": [], "certifications": [], "experience": [],
     })
 
@@ -462,8 +458,6 @@ def extract_structured_resume_rightsourcing_deterministic(resume_text: str) -> d
     def flush(sec, sec_lines):
         if sec == "summary":
             result["professional_summary"] = _parse_bulleted_list(sec_lines)
-        elif sec == "qualifications":
-            result["core_qualifications"] = _parse_qualifications(sec_lines)
         elif sec == "education":
             result["education"] = _parse_education(sec_lines)
         elif sec == "licenses_certs":
@@ -487,5 +481,8 @@ def extract_structured_resume_rightsourcing_deterministic(resume_text: str) -> d
     if certifications_only_lines:
         _, certifications = _parse_licenses_certs(certifications_only_lines, force_bucket="certifications_only")
         result["certifications"].extend(certifications)
+
+    result["experience"].sort(key=lambda j: _date_sort_key(j.get("start_date", "")), reverse=True)
+    result["education"].sort(key=lambda e: _date_sort_key(e.get("date", "")), reverse=True)
 
     return result

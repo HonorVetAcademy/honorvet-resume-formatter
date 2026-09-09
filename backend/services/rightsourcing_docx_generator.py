@@ -22,19 +22,24 @@ def _license_line(doc, entry: dict, has_license_number: bool):
     p = doc.add_paragraph()
     p.paragraph_format.space_after = Pt(2)
     run = p.add_run(entry.get("name", ""))
+    run.bold = True
     run.font.size = Pt(10.5)
-    tail = f" | License Number: {entry.get('id') or NOT_LISTED} | Expiry: {entry.get('expires') or NOT_LISTED}" \
-        if has_license_number else f" | Expiry: {entry.get('expires') or NOT_LISTED}"
-    r2 = p.add_run(tail)
-    r2.bold = True
-    r2.font.size = Pt(10.5)
+    if has_license_number:
+        r2 = p.add_run(f" # {entry.get('id') or NOT_LISTED}")
+        r2.font.size = Pt(10.5)
+    r3 = p.add_run("| ")
+    r3.font.size = Pt(10.5)
+    r4 = p.add_run(f"Expires: {entry.get('expires') or NOT_LISTED}")
+    r4.bold = True
+    r4.font.size = Pt(10.5)
 
 
 def generate_rightsourcing_docx(resume: dict, output_dir: str) -> str:
-    """Render a structured resume into the HonorVet standard format: header, summary,
-    education, licensure & certifications, professional experience. Transcribes only
-    what's present in `resume` — missing per-job metadata is shown as a
-    "[TO BE CONFIRMED]" placeholder rather than omitted."""
+    """Render a structured resume into the HonorVet standard format (matching the
+    reference "Resume 16" example): header, summary, education, licensure &
+    certifications, professional experience. Transcribes only what's present in
+    `resume` — missing per-job metadata is shown as a "[TO BE CONFIRMED]"
+    placeholder rather than omitted."""
     os.makedirs(output_dir, exist_ok=True)
     doc = Document()
 
@@ -48,7 +53,7 @@ def generate_rightsourcing_docx(resume: dict, output_dir: str) -> str:
     style.font.name = "Calibri"
     style.font.size = Pt(10.5)
 
-    # Candidate Header
+    # Candidate Header — name, then phone/email/address each on their own centered line
     name_line = resume.get("full_name", "")
     if resume.get("credentials_suffix"):
         name_line += f", {resume['credentials_suffix']}"
@@ -58,39 +63,46 @@ def generate_rightsourcing_docx(resume: dict, output_dir: str) -> str:
     run.bold = True
     run.font.size = Pt(15)
 
-    contact_line = " | ".join(x for x in [resume.get("permanent_address"), resume.get("phone"), resume.get("email")] if x)
-    if contact_line:
+    for bit in [resume.get("phone"), resume.get("email"), resume.get("permanent_address")]:
+        if not bit:
+            continue
         cp = doc.add_paragraph()
         cp.alignment = WD_ALIGN_PARAGRAPH.CENTER
         cp.paragraph_format.space_after = Pt(0)
-        r = cp.add_run(contact_line)
+        r = cp.add_run(bit)
         r.font.size = Pt(10.5)
 
     # Professional Summary
     if resume.get("professional_summary"):
-        _section_header(doc, "Professional Summary")
+        _section_header(doc, "Professional Summary:")
         for bullet in resume["professional_summary"]:
             _bullet(doc, bullet)
 
     # Education
     if resume.get("education"):
-        _section_header(doc, "Education")
+        _section_header(doc, "Education:")
         for edu in resume["education"]:
-            dp = doc.add_paragraph()
-            dp.paragraph_format.space_after = Pt(0)
-            dr = dp.add_run(edu.get("degree", ""))
+            p = doc.add_paragraph()
+            p.paragraph_format.space_after = Pt(2)
+            dr = p.add_run(edu.get("degree", ""))
             dr.bold = True
             dr.font.size = Pt(10.5)
 
-            tail = ", ".join(x for x in [edu.get("school", ""), edu.get("location", "")] if x)
-            sp = doc.add_paragraph()
-            sp.paragraph_format.space_after = Pt(4)
-            sr = sp.add_run(" | ".join(x for x in [tail, edu.get("date", "")] if x))
-            sr.font.size = Pt(10.5)
+            tail = edu.get("school", "")
+            if edu.get("location"):
+                tail += f" – {edu['location']}" if tail else edu["location"]
+            mr = p.add_run(f" {tail}" if tail else "")
+            mr.font.size = Pt(10.5)
+
+            r3 = p.add_run("| ")
+            r3.font.size = Pt(10.5)
+            r4 = p.add_run(edu.get("date", ""))
+            r4.bold = True
+            r4.font.size = Pt(10.5)
 
     # Licensure & Certifications
     if resume.get("licenses") or resume.get("certifications"):
-        _section_header(doc, "Licensure & Certifications")
+        _section_header(doc, "Licensure & Certifications:")
         for lic in resume.get("licenses", []):
             _license_line(doc, lic, has_license_number=True)
         for cert in resume.get("certifications", []):
@@ -98,34 +110,36 @@ def generate_rightsourcing_docx(resume: dict, output_dir: str) -> str:
 
     # Professional Experience
     if resume.get("experience"):
-        _section_header(doc, "Professional Experience")
+        _section_header(doc, "Professional Experience:")
         for job in resume["experience"]:
             p = doc.add_paragraph()
             p.paragraph_format.space_before = Pt(8)
             p.paragraph_format.space_after = Pt(0)
             loc = ", ".join(x for x in [job.get("city", ""), job.get("state", "")] if x)
             facility_line = job.get("facility_name", "")
-            if loc:
-                facility_line += f" - {loc}"
             run = p.add_run(facility_line)
             run.bold = True
             run.font.size = Pt(10.5)
-            dates = f"{job.get('start_date', '')} – {job.get('end_date', '')}"
-            r2 = p.add_run(f" | {dates}")
-            r2.bold = True
-            r2.font.size = Pt(10.5)
+            if loc:
+                lr = p.add_run(f", {loc}")
+                lr.font.size = Pt(10.5)
+            r3 = p.add_run("| ")
+            r3.font.size = Pt(10.5)
+            r4 = p.add_run(f"{job.get('start_date', '')} – {job.get('end_date', '')}")
+            r4.bold = True
+            r4.font.size = Pt(10.5)
 
             tp = doc.add_paragraph()
             tp.paragraph_format.space_after = Pt(2)
             tr = tp.add_run(job.get("job_title") or NOT_LISTED)
-            tr.italic = True
+            tr.bold = True
             tr.font.size = Pt(10.5)
 
-            _line_or_placeholder(doc, "EMR", job.get("emr"))
-            _line_or_placeholder(doc, "Facility Type", job.get("facility_type"))
+            _line_or_placeholder(doc, "Type of Facility", job.get("facility_type"))
             _line_or_placeholder(doc, "Trauma Level", job.get("trauma_level"))
             _line_or_placeholder(doc, "Bed Size", job.get("bed_size"))
             _line_or_placeholder(doc, "Patient Ratio", job.get("patient_ratio"))
+            _line_or_placeholder(doc, "Charting System", job.get("emr"))
 
             for extra in job.get("additional_details", []):
                 if extra.get("label") and extra.get("value"):

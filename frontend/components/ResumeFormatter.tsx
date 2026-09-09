@@ -184,11 +184,11 @@ export default function ResumeFormatter() {
                 <div key={i} className="border border-gray-200 rounded-lg p-4">
                   <p className="font-semibold text-gray-900 text-sm mb-2">{job.facility_name}{job.city ? `, ${job.city}, ${job.state}` : ''}</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
-                    <div><span className="text-gray-400">EMR: </span>{job.emr}</div>
-                    <div><span className="text-gray-400">Facility Type: </span>{job.facility_type}</div>
+                    <div><span className="text-gray-400">Type of Facility: </span>{job.facility_type}</div>
                     <div><span className="text-gray-400">Trauma Level: </span>{job.trauma_level}</div>
                     <div><span className="text-gray-400">Bed Size: </span>{job.bed_size}</div>
                     <div><span className="text-gray-400">Patient Ratio: </span>{job.patient_ratio}</div>
+                    <div><span className="text-gray-400">Charting System: </span>{job.emr}</div>
                     {job.additional_details?.map((d, di) => (
                       <div key={di}><span className="text-gray-400">{d.label}: </span>{d.value}</div>
                     ))}

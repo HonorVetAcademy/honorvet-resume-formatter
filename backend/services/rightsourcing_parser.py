@@ -2,7 +2,7 @@ import re
 
 NOT_LISTED = "[TO BE CONFIRMED]"
 
-BULLET_RE = re.compile(r"^[•\-*▪]\s*")
+BULLET_RE = re.compile(r"^[•\-*▪◦●‣∙○]\s*")
 PHONE_RE = re.compile(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
 # Tolerates a stray space before "@" — a common PDF-extraction artifact from
 # justified/spaced-out header text (e.g. "name1008 @gmail.com").
@@ -122,8 +122,16 @@ def _normalize_date(text: str) -> str:
     return text
 
 
+# Job-board exports (Monster, CareerBuilder, etc.) sometimes inject their own
+# contact-relay boilerplate into the plain-text body of a downloaded resume —
+# it's real text in the file, but it's platform noise, not resume content, and
+# without filtering it lands wherever it happens to fall (a fake certification,
+# a fake job-detail line, whatever section is open at that point in the file).
+_PLATFORM_NOISE_RE = re.compile(r"you can contact this candidate at", re.IGNORECASE)
+
+
 def _lines(resume_text: str):
-    return [_clean(line) for line in resume_text.splitlines()]
+    return [_clean(line) for line in resume_text.splitlines() if not _PLATFORM_NOISE_RE.search(line)]
 
 
 def _section_key(line: str):
@@ -166,12 +174,18 @@ def _parse_header(lines):
     return header
 
 
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
+
+
 def _parse_bulleted_list(lines):
     content = [l for l in lines if l]
     if not any(BULLET_RE.match(l) for l in content):
-        # Prose with no bullet markers at all — treat the whole block as one item
-        # rather than inventing bullet points the resume doesn't have.
-        return [_clean(" ".join(content))] if content else []
+        # No recognizable bullet marker anywhere — this is prose, not a list with an
+        # unusual glyph. Split on sentence boundaries so it still becomes one bullet
+        # per sentence rather than one run-on paragraph; this only chooses where to
+        # break, it doesn't add, remove, or reword anything.
+        joined = _clean(" ".join(content))
+        return [s.strip() for s in _SENTENCE_SPLIT_RE.split(joined) if s.strip()] if joined else []
 
     items = []
     for line in content:
@@ -196,7 +210,10 @@ def _split_school_location(text: str):
     if loose:
         return _clean(loose.group("name")), _clean(loose.group("city")), loose.group("state"), _clean(loose.group("rest"))
 
-    return text, "", "", ""
+    # No location at all (e.g. an online-only school) — the text may still end
+    # in a dangling comma that was meant to introduce one, so strip it rather
+    # than leaving it stuck to the end of the school name.
+    return text.rstrip(" ,"), "", "", ""
 
 
 def _parse_education(lines):
@@ -231,14 +248,14 @@ def _parse_education(lines):
             flush_pending()
             rest, _, date = line.rpartition("|")
             rest, date = _clean(rest), _normalize_date(date)
-            parts = re.split(r"\s{2,}|\s+–\s+", rest, maxsplit=1)
+            parts = re.split(r"\s{2,}|\s+[–—-]\s+", rest, maxsplit=1)
             degree = _clean(parts[0]) if parts else rest
             tail = _clean(parts[1]) if len(parts) > 1 else ""
             school, city, state, extra = _split_school_location(tail)
             location = f"{city}, {state}" if city and state else ""
             if extra:
                 degree = f"{degree} – {extra}" if degree else extra
-            entries.append({"degree": degree, "school": school if location else tail, "location": location, "date": date})
+            entries.append({"degree": degree, "school": school, "location": location, "date": date})
             continue
 
         date_value, remainder, date_found = "", line, False
@@ -327,7 +344,15 @@ def _parse_licenses_certs(lines, force_bucket=None):
             continue
         line = BULLET_RE.sub("", line)
 
-        if "|" in line or re.search(r"Expires:", line, re.IGNORECASE):
+        pipe_segments = [s for s in line.split("|")]
+        if re.search(r"Expires:", line, re.IGNORECASE):
+            entries = [_parse_single_cert_line(line)]
+        elif len(pipe_segments) > 1 and not any(_SINGLE_DATE_RE.search(s) for s in pipe_segments):
+            # Several short cert names sharing one line with "|" between them and no
+            # date anywhere (e.g. "ACLS | BLS | PALS | NRP") — not a single cert whose
+            # name and expiry happen to be pipe-separated.
+            entries = [{"name": _clean(s), "id": "", "expires": ""} for s in pipe_segments if _clean(s)]
+        elif "|" in line:
             entries = [_parse_single_cert_line(line)]
         else:
             entries = _split_multi_cert_line(line)
@@ -453,7 +478,14 @@ def _parse_experience(lines):
                 current["additional_details"].append({"label": _clean(label_match.group(1)), "value": value})
             continue
 
-        current["duties"].append(BULLET_RE.sub("", line))
+        # A duty that word-wraps across two lines in the source (common once a
+        # bullet runs longer than one line) has no bullet marker on its second
+        # line — that's what tells it apart from a genuinely new duty, so it
+        # gets appended to the previous one instead of starting a new entry.
+        if is_bullet or not current["duties"]:
+            current["duties"].append(BULLET_RE.sub("", line))
+        else:
+            current["duties"][-1] += " " + line
 
     if _is_real_job(current):
         jobs.append(current)

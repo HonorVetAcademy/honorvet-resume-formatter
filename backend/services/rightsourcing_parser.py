@@ -337,6 +337,32 @@ def _split_multi_cert_line(line: str) -> list:
     return [{"name": n, "id": "", "expires": expires} for n in names] or [{"name": remainder, "id": "", "expires": expires}]
 
 
+# A resume sometimes lists a certification as a bare abbreviation with no
+# accompanying full name at all (unlike "Basic Life Support (BLS)", which
+# already needs no help). Deliberately conservative — only names common and
+# unambiguous enough to state with confidence; several of these are also
+# independently confirmed by appearing spelled out in full on other resumes
+# already run through this tool. Anything not on this list is left exactly as
+# the resume wrote it rather than guessed at.
+KNOWN_CERT_EXPANSIONS = {
+    "BLS": "Basic Life Support",
+    "ACLS": "Advanced Cardiovascular Life Support",
+    "PALS": "Pediatric Advanced Life Support",
+    "NRP": "Neonatal Resuscitation Program",
+    "TNCC": "Trauma Nursing Core Course",
+    "NIHSS": "National Institutes of Health Stroke Scale",
+    "MAOB": "Management of Aggressive Behavior",
+    "OCN": "Oncology Certified Nurse",
+    "CRNI": "Certified Registered Nurse Infusion",
+}
+
+
+def _expand_known_abbreviation(name: str) -> str:
+    normalized = re.sub(r"[.\s]", "", name).upper()
+    full = KNOWN_CERT_EXPANSIONS.get(normalized)
+    return f"{full} ({name})" if full else name
+
+
 def _parse_licenses_certs(lines, force_bucket=None):
     licenses, certifications = [], []
     for line in lines:
@@ -358,6 +384,7 @@ def _parse_licenses_certs(lines, force_bucket=None):
             entries = _split_multi_cert_line(line)
 
         for entry in entries:
+            entry["name"] = _expand_known_abbreviation(entry["name"])
             is_license = bool(entry["id"]) or bool(re.match(r"^(RN\b|Registered Nurse\b|Licensed|License)", entry["name"], re.IGNORECASE))
             if force_bucket == "certifications_only" or (force_bucket is None and not is_license):
                 certifications.append(entry)
